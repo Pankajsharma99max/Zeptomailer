@@ -146,6 +146,7 @@ export default function App() {
         {/* Footer */}
         <footer className="text-center py-6 text-gray-600 text-sm border-t border-gray-800/50">
           <p>CertFlow — Certificate-as-a-Service • Zero-Disk • Smart Batching • Real-Time Progress</p>
+          <p className="mt-2 text-brand-400 font-semibold tracking-wide">Made by Pankaj</p>
         </footer>
       </main>
     </div>
