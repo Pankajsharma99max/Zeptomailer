@@ -33,7 +33,7 @@ async def start_campaign(config: CampaignConfig):
     # Copy recipients so the campaign can modify them (test mode)
     recipients_copy = [
         Recipient(name=r.name, email=r.email) for r in store.recipients
-    ]
+    ][config.start_index:]
 
     # Launch as asyncio task (not blocking the response)
     asyncio.create_task(

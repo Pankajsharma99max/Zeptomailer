@@ -8,13 +8,19 @@ sends via ZeptoMail, and reports progress through a shared state object.
 import asyncio
 import csv
 import io
+import logging
 import time
+import uuid
+from datetime import datetime
 from typing import List, Dict, Optional
 
 from config import get_settings
 from models import CampaignConfig, ProgressUpdate, Recipient
 from services.pdf_engine import generate_certificate_pdf
 from services.mailer import send_batch
+from store import store
+
+logger = logging.getLogger(__name__)
 
 
 class CampaignState:
@@ -72,7 +78,11 @@ campaign_state = CampaignState()
 
 def parse_csv(csv_bytes: bytes) -> List[Recipient]:
     """Parse uploaded CSV bytes into a list of Recipients."""
-    text = csv_bytes.decode("utf-8-sig")  # Handle BOM
+    try:
+        text = csv_bytes.decode("utf-8-sig")  # Handle BOM
+    except UnicodeDecodeError:
+        text = csv_bytes.decode("cp1252")     # Fallback for Excel/Windows-1252
+        
     reader = csv.DictReader(io.StringIO(text))
 
     # Normalize column headers (case-insensitive)
@@ -114,6 +124,11 @@ async def run_campaign(
     batch_size = settings.BATCH_SIZE
     state.total_batches = (len(recipients) + batch_size - 1) // batch_size
 
+    logger.info(
+        "Campaign started: %d recipients, %d batches, test_mode=%s",
+        len(recipients), state.total_batches, config.test_mode,
+    )
+
     # If test mode, override all emails to admin
     if config.test_mode:
         for r in recipients:
@@ -136,6 +151,7 @@ async def run_campaign(
                 if state.should_stop:
                     break
                 state.current_name = r.name
+                logger.debug("Generating PDF for: %s", r.name)
                 pdf_bytes = generate_certificate_pdf(
                     template_bytes=template_bytes,
                     name=r.name,
@@ -153,8 +169,10 @@ async def run_campaign(
                 state.status = "stopped"
                 break
 
-            # Send batch
-            results = await send_batch(
+            # Send batch and tally results in real-time
+            batch_sent = 0
+            batch_failed = 0
+            async for r in send_batch(
                 token=settings.ZEPTOMAIL_TOKEN,
                 sender_email=settings.SENDER_EMAIL,
                 sender_name=settings.SENDER_NAME,
@@ -162,14 +180,13 @@ async def run_campaign(
                 subject=config.email_subject,
                 body=config.email_body,
                 is_html=config.is_html,
-            )
-
-            # Tally results
-            for r in results:
+            ):
                 if r["success"]:
                     state.sent += 1
+                    batch_sent += 1
                 else:
                     state.failed += 1
+                    batch_failed += 1
                     state.failed_list.append(
                         {
                             "name": r["name"],
@@ -177,6 +194,15 @@ async def run_campaign(
                             "error": r["error"],
                         }
                     )
+                    logger.warning("Failed to send to %s <%s>: %s", r["name"], r["email"], r["error"])
+
+            logger.info(
+                "Batch %d/%d complete: %d sent, %d failed",
+                state.current_batch, state.total_batches, batch_sent, batch_failed,
+            )
+            
+            # Save progress so it survives a crash
+            store.save_progress(config.start_index + state.sent + state.failed)
 
             # Rate limiter: sleep between batches
             if batch_idx < state.total_batches - 1 and not state.should_stop:
@@ -184,10 +210,26 @@ async def run_campaign(
 
         if not state.should_stop:
             state.status = "completed"
+            store.save_progress(0)  # Reset disk progress on complete
+            logger.info("Campaign completed: %d sent, %d failed", state.sent, state.failed)
+        else:
+            logger.info("Campaign stopped by user: %d sent, %d failed", state.sent, state.failed)
 
     except Exception as e:
         state.status = "error"
         state.current_name = f"Error: {str(e)}"
+        logger.error("Campaign error: %s", e, exc_info=True)
 
     finally:
+        # Save to persistent history
+        if state.status in ("completed", "stopped", "error"):
+            store.add_history_record({
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now().isoformat(),
+                "subject": config.email_subject,
+                "total_sent": state.sent,
+                "total_failed": state.failed,
+                "status": state.status,
+            })
+            
         state.is_running = False

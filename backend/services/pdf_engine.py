@@ -7,14 +7,23 @@ to wrap the result as a PDF — all entirely in memory via BytesIO.
 
 import io
 import os
+import logging
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import landscape
 from reportlab.pdfgen import canvas as pdf_canvas
 from reportlab.lib.utils import ImageReader
 
+logger = logging.getLogger(__name__)
+
 # Path to the bundled font
 FONT_DIR = os.path.join(os.path.dirname(__file__), "..", "assets", "fonts")
 DEFAULT_FONT = os.path.join(FONT_DIR, "Roboto-Regular.ttf")
+
+# Log font availability at import time
+if os.path.isfile(DEFAULT_FONT):
+    logger.info("Font loaded: %s", os.path.abspath(DEFAULT_FONT))
+else:
+    logger.warning("Font NOT found at %s — will use Pillow default", os.path.abspath(DEFAULT_FONT))
 
 
 def _hex_to_rgb(hex_color: str) -> tuple:
@@ -49,7 +58,8 @@ def generate_certificate_image(
     # Load font
     try:
         font = ImageFont.truetype(DEFAULT_FONT, font_size)
-    except OSError:
+    except OSError as e:
+        logger.warning("Could not load font %s (size=%d): %s — using default", DEFAULT_FONT, font_size, e)
         font = ImageFont.load_default()
 
     # Translate percentage coords → pixel coords

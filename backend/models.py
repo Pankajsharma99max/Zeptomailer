@@ -13,6 +13,7 @@ class CampaignConfig(BaseModel):
     email_body: str = "Please find your certificate attached."
     is_html: bool = False
     test_mode: bool = False
+    start_index: int = 0      # Skip this many recipients
 
 
 class ProgressUpdate(BaseModel):
@@ -41,3 +42,12 @@ class Recipient(BaseModel):
     """A single recipient parsed from CSV."""
     name: str
     email: str
+
+class CampaignHistoryRecord(BaseModel):
+    """A record of a completed or stopped campaign."""
+    id: str
+    timestamp: str
+    subject: str
+    total_sent: int
+    total_failed: int
+    status: str

@@ -38,6 +38,7 @@ Open http://localhost:5173
    - `ZEPTOMAIL_TOKEN` — your ZeptoMail API token
    - `SENDER_EMAIL` — your verified domain email
    - `ADMIN_EMAIL` — your personal email for test mode
+   - `APP_PASSWORD` — password to restrict access to the site
 
 ## Environment Variables
 
@@ -47,5 +48,6 @@ Open http://localhost:5173
 | `SENDER_EMAIL` | From address (your domain) | ✅ |
 | `SENDER_NAME` | Display name | Optional |
 | `ADMIN_EMAIL` | Test mode recipient | ✅ |
+| `APP_PASSWORD` | Access password for the entire application | Optional but recommended |
 | `BATCH_SIZE` | Emails per batch (default: 50) | Optional |
 | `BATCH_DELAY_SECONDS` | Delay between batches (default: 1.0) | Optional |

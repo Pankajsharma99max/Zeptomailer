@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { startCampaign, stopCampaign, getFailedCSVUrl } from '../lib/api';
 
 const DEFAULT_PLAIN = 'Dear participant,\n\nPlease find your certificate of participation attached.\n\nBest regards,\nThe Team';
@@ -38,15 +38,22 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isRunning, onRunningChange, lastStatus }) {
+export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isRunning, onRunningChange, lastStatus, lastSentCount }) {
   const [subject, setSubject] = useState('Your Certificate');
   const [htmlMode, setHtmlMode] = useState(false);
   const [plainBody, setPlainBody] = useState(DEFAULT_PLAIN);
   const [htmlBody, setHtmlBody] = useState(DEFAULT_HTML);
   const [showPreview, setShowPreview] = useState(false);
   const [testMode, setTestMode] = useState(false);
+  const [startIndex, setStartIndex] = useState(0);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+
+  useEffect(() => {
+    if (lastSentCount !== undefined && lastSentCount > 0) {
+      setStartIndex(lastSentCount);
+    }
+  }, [lastSentCount]);
 
   const body = htmlMode ? htmlBody : plainBody;
 
@@ -64,6 +71,7 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         email_body: body,
         is_html: htmlMode,
         test_mode: testMode,
+        start_index: parseInt(startIndex) || 0,
       });
       onRunningChange(true);
     } catch (err) {
@@ -198,6 +206,24 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
               )}
             </div>
           )}
+        </div>
+        {/* Start Index Input */}
+        <div className="flex items-center justify-between bg-gray-800/40 rounded-xl p-4">
+          <div>
+            <p className="font-medium text-white">Start From Row</p>
+            <p className="text-sm text-gray-500">
+              Skip previously sent emails (0 = start from beginning)
+            </p>
+          </div>
+          <input
+            type="number"
+            min="0"
+            value={startIndex}
+            onChange={(e) => setStartIndex(e.target.value)}
+            disabled={isRunning}
+            className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm focus:ring-2 focus:ring-brand-500 focus:outline-none placeholder-gray-400"
+            id="start-index-input"
+          />
         </div>
 
         {/* Test Mode Toggle */}

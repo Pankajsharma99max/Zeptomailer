@@ -18,3 +18,5 @@ services:
         value: "1.0"
       - key: FRONTEND_ORIGIN
         value: "*"
+      - key: APP_PASSWORD
+        sync: false

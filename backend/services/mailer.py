@@ -2,12 +2,16 @@
 ZeptoMail Batch Email Sender.
 
 Sends emails with PDF attachments via the ZeptoMail API.
-Each batch handles up to 50 recipients with individual attachments.
+Uses asyncio for concurrent sending within batches and yields results in real-time.
 """
 
+import asyncio
 import base64
+import logging
 import httpx
 from typing import List, Dict, Any, Tuple
+
+logger = logging.getLogger(__name__)
 
 ZEPTOMAIL_API_URL = "https://api.zeptomail.com/v1.1/email"
 ZEPTOMAIL_BATCH_URL = "https://api.zeptomail.com/v1.1/email/batch"
@@ -62,10 +66,14 @@ async def send_single_email(
                 ZEPTOMAIL_API_URL, json=payload, headers=headers
             )
             if resp.status_code in (200, 201):
+                logger.debug("Email sent to %s <%s>", recipient_name, recipient_email)
                 return True, ""
             else:
-                return False, f"HTTP {resp.status_code}: {resp.text}"
+                error_msg = f"HTTP {resp.status_code}: {resp.text}"
+                logger.error("ZeptoMail API error for %s <%s>: %s", recipient_name, recipient_email, error_msg)
+                return False, error_msg
     except Exception as e:
+        logger.error("Email send exception for %s <%s>: %s", recipient_name, recipient_email, e)
         return False, str(e)
 
 
@@ -77,22 +85,16 @@ async def send_batch(
     subject: str,
     body: str,
     is_html: bool = False,
-) -> List[Dict[str, Any]]:
+):
     """
-    Send a batch of emails. Each recipient dict must contain:
+    Send a batch of emails concurrently. Each recipient dict must contain:
       - name: str
       - email: str
       - pdf_bytes: bytes
 
-    Since ZeptoMail batch API sends the same content to all recipients,
-    but we need individual attachments per recipient, we send them
-    individually within the batch window.
-
-    Returns list of {email, name, success, error} dicts.
+    Yields {email, name, success, error} dicts as they complete in real-time.
     """
-    results = []
-
-    for r in recipients:
+    async def _send_task(r: Dict[str, Any]) -> Dict[str, Any]:
         success, error = await send_single_email(
             token=token,
             sender_email=sender_email,
@@ -105,13 +107,15 @@ async def send_batch(
             filename=f"{r['name']}_Certificate.pdf",
             is_html=is_html,
         )
-        results.append(
-            {
-                "email": r["email"],
-                "name": r["name"],
-                "success": success,
-                "error": error,
-            }
-        )
+        return {
+            "email": r["email"],
+            "name": r["name"],
+            "success": success,
+            "error": error,
+        }
 
-    return results
+    tasks = [_send_task(r) for r in recipients]
+    for coro in asyncio.as_completed(tasks):
+        result = await coro
+        yield result
+

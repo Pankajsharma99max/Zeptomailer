@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { uploadTemplate } from '../lib/api';
 
-export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange }) {
+export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange, restoredTemplateUrl, restoredTemplateInfo }) {
   const [templateUrl, setTemplateUrl] = useState(null);
   const [templateInfo, setTemplateInfo] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -10,6 +10,16 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
   const containerRef = useRef(null);
   const imageRef = useRef(null);
   const dragOffset = useRef({ x: 0, y: 0 });
+
+  // Restore template from server on mount (if available)
+  useEffect(() => {
+    if (restoredTemplateUrl && !templateUrl) {
+      setTemplateUrl(restoredTemplateUrl);
+    }
+    if (restoredTemplateInfo && !templateInfo) {
+      setTemplateInfo(restoredTemplateInfo);
+    }
+  }, [restoredTemplateUrl, restoredTemplateInfo]);
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];

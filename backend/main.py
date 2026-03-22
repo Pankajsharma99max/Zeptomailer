@@ -6,12 +6,22 @@ In development, the frontend runs on its own Vite dev server.
 """
 
 import os
-from fastapi import FastAPI, Request
+import logging
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from config import get_settings
-from routers import upload, preview, campaign, progress
+from auth import verify_password
+from routers import upload, preview, campaign, progress, status
+from store import store
+
+# Configure logging for the entire app
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -31,10 +41,25 @@ app.add_middleware(
 )
 
 # Include API routers
-app.include_router(upload.router)
-app.include_router(preview.router)
-app.include_router(campaign.router)
-app.include_router(progress.router)
+app.include_router(upload.router, dependencies=[Depends(verify_password)])
+app.include_router(preview.router, dependencies=[Depends(verify_password)])
+app.include_router(campaign.router, dependencies=[Depends(verify_password)])
+app.include_router(progress.router) # WebSocket auth handled inside the route
+app.include_router(status.router, dependencies=[Depends(verify_password)])
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Load persisted data from disk on startup."""
+    logger.info("Starting Certificate-as-a-Service...")
+    store.load_from_disk()
+    logger.info(
+        "Startup complete. Template=%s, Recipients=%d, ZeptoMail=%s",
+        bool(store.template_bytes),
+        len(store.recipients),
+        bool(settings.ZEPTOMAIL_TOKEN),
+    )
+
 
 # -------------------------------------------------------------------
 # Serve the React frontend build in production

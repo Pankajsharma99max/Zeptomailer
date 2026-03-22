@@ -5,6 +5,9 @@ import CsvUploader from './components/CsvUploader';
 import CampaignControls from './components/CampaignControls';
 import PreviewPanel from './components/PreviewPanel';
 import ProgressBar from './components/ProgressBar';
+import { fetchStatus, getTemplateImageUrl } from './lib/api';
+import CampaignHistory from './components/CampaignHistory';
+import Login from './components/Login';
 
 export default function App() {
   const [coords, setCoords] = useState({ x_percent: 50, y_percent: 50 });
@@ -14,6 +17,36 @@ export default function App() {
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [lastStatus, setLastStatus] = useState(null);
+  const [restoredTemplateUrl, setRestoredTemplateUrl] = useState(null);
+  const [restoredTemplateInfo, setRestoredTemplateInfo] = useState(null);
+  const [recipientCount, setRecipientCount] = useState(0);
+  const [lastSentCount, setLastSentCount] = useState(0);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('app_password'));
+
+  // On mount: check if backend already has data (survives refresh)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchStatus()
+      .then((data) => {
+        if (data.template_loaded) {
+          setRestoredTemplateUrl(getTemplateImageUrl());
+          setRestoredTemplateInfo({
+            width: data.template_width,
+            height: data.template_height,
+          });
+        }
+        if (data.csv_loaded && data.recipient_count > 0) {
+          setCsvUploaded(true);
+          setRecipientCount(data.recipient_count);
+          if (data.last_sent_count) {
+             setLastSentCount(data.last_sent_count);
+          }
+        }
+      })
+      .catch((err) => {
+        // Backend not available yet or 401, ignore here since API handler handles 401
+      });
+  }, [isAuthenticated]);
 
   // Poll progress to detect campaign end
   useEffect(() => {
@@ -30,6 +63,15 @@ export default function App() {
     }, 2000);
     return () => clearInterval(interval);
   }, [isRunning]);
+
+  if (!isAuthenticated) {
+    return (
+      <Login onLogin={(pwd) => {
+        localStorage.setItem('app_password', pwd);
+        setIsAuthenticated(true);
+      }} />
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -70,8 +112,13 @@ export default function App() {
               onFontColorChange={setFontColor}
               textAlign={textAlign}
               onTextAlignChange={setTextAlign}
+              restoredTemplateUrl={restoredTemplateUrl}
+              restoredTemplateInfo={restoredTemplateInfo}
             />
-            <CsvUploader onUploaded={(data) => setCsvUploaded(true)} />
+            <CsvUploader
+              onUploaded={(data) => setCsvUploaded(true)}
+              restoredCount={recipientCount}
+            />
           </div>
 
           {/* Right column */}
@@ -85,12 +132,16 @@ export default function App() {
               isRunning={isRunning}
               onRunningChange={setIsRunning}
               lastStatus={lastStatus}
+              lastSentCount={lastSentCount}
             />
           </div>
         </div>
 
         {/* Progress bar — full width */}
         <ProgressBar isRunning={isRunning} />
+
+        {/* Campaign History Analytics */}
+        <CampaignHistory />
 
         {/* Footer */}
         <footer className="text-center py-6 text-gray-600 text-sm border-t border-gray-800/50">

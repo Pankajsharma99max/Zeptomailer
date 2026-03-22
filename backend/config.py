@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     BATCH_SIZE: int = 50
     BATCH_DELAY_SECONDS: float = 1.0
     FRONTEND_ORIGIN: str = "http://localhost:5173"
+    APP_PASSWORD: str = ""
+
 
     class Config:
         env_file = ".env"

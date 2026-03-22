@@ -6,12 +6,16 @@ downstream use by campaign and preview services.
 """
 
 import io
+import logging
 import csv
 from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi.responses import Response
 from services.campaign_runner import parse_csv
 from models import Recipient
 from store import store
 from typing import List
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/upload", tags=["upload"])
 
@@ -31,9 +35,13 @@ async def upload_csv(file: UploadFile = File(...)):
     try:
         store.recipients = parse_csv(content)
     except Exception as e:
+        logger.error("CSV parse error: %s", e)
         raise HTTPException(
             status_code=400, detail=f"Failed to parse CSV: {str(e)}"
         )
+
+    # Persist to disk so data survives page refreshes
+    store.save_csv()
 
     if len(store.recipients) == 0:
         raise HTTPException(
@@ -66,6 +74,9 @@ async def upload_template(file: UploadFile = File(...)):
 
     store.template_bytes = content
 
+    # Persist to disk so data survives page refreshes
+    store.save_template()
+
     # Get image dimensions for the frontend
     from PIL import Image
 
@@ -78,3 +89,21 @@ async def upload_template(file: UploadFile = File(...)):
         "height": h,
         "size_bytes": len(content),
     }
+
+
+@router.get("/template-image")
+async def get_template_image():
+    """Serve the stored template image so the frontend can restore it after refresh."""
+    if not store.template_bytes:
+        raise HTTPException(status_code=404, detail="No template uploaded")
+
+    # Detect content type
+    content_type = "image/jpeg"
+    if store.template_bytes[:8].startswith(b'\x89PNG'):
+        content_type = "image/png"
+
+    return Response(
+        content=store.template_bytes,
+        media_type=content_type,
+        headers={"Cache-Control": "no-cache"},
+    )

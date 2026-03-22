@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { uploadCSV } from '../lib/api';
 
-export default function CsvUploader({ onUploaded }) {
+export default function CsvUploader({ onUploaded, restoredCount }) {
   const [dragOver, setDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState(null);
@@ -32,6 +32,9 @@ export default function CsvUploader({ onUploaded }) {
     handleFile(file);
   };
 
+  // Show restored state if we have a count from the server but no fresh result
+  const showRestored = !result && restoredCount > 0;
+
   return (
     <div className="glass-card p-6 space-y-4">
       <h2 className="section-title">
@@ -59,7 +62,7 @@ export default function CsvUploader({ onUploaded }) {
           </svg>
         </div>
         <p className="text-gray-400 font-medium">
-          {isUploading ? 'Uploading...' : 'Drop CSV file or click to browse'}
+          {isUploading ? 'Uploading...' : showRestored ? 'Drop CSV to replace, or click to browse' : 'Drop CSV file or click to browse'}
         </p>
         <p className="text-gray-600 text-sm mt-1">Must contain "name" and "email" columns</p>
         <input
@@ -84,6 +87,16 @@ export default function CsvUploader({ onUploaded }) {
 
       {error && (
         <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3 text-rose-400 text-sm">{error}</div>
+      )}
+
+      {/* Show restored recipient count */}
+      {showRestored && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span className="badge-success">{restoredCount.toLocaleString()} recipients</span>
+            <span className="text-sm text-gray-500">restored from previous session</span>
+          </div>
+        </div>
       )}
 
       {result && (
