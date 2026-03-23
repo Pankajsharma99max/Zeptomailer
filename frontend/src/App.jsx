@@ -5,7 +5,7 @@ import CsvUploader from './components/CsvUploader';
 import CampaignControls from './components/CampaignControls';
 import PreviewPanel from './components/PreviewPanel';
 import ProgressBar from './components/ProgressBar';
-import { fetchStatus, getTemplateImageUrl } from './lib/api';
+import { fetchStatus, getTemplateImageUrl, fetchProgress } from './lib/api';
 import CampaignHistory from './components/CampaignHistory';
 import Login from './components/Login';
 
@@ -53,8 +53,7 @@ export default function App() {
     if (!isRunning) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch('/api/campaign/progress');
-        const data = await res.json();
+        const data = await fetchProgress();
         if (['completed', 'stopped', 'error'].includes(data.status)) {
           setIsRunning(false);
           setLastStatus(data.status);
@@ -74,14 +73,20 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navbar />
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-[#030712]">
+      {/* Animated Background Orbs */}
+      <div className="fixed top-[-10%] left-[-10%] w-[40rem] h-[40rem] bg-brand-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob z-0 pointer-events-none"></div>
+      <div className="fixed top-[20%] right-[-10%] w-[35rem] h-[35rem] bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob animation-delay-2000 z-0 pointer-events-none"></div>
+      <div className="fixed bottom-[-20%] left-[20%] w-[45rem] h-[45rem] bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob animation-delay-4000 z-0 pointer-events-none"></div>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 space-y-6">
-        {/* Header */}
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <Navbar />
+
+        <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 space-y-6">
+          {/* Header */}
         <div className="text-center space-y-2 py-4">
-          <h1 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-brand-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
-            Certificate Campaign Studio
+          <h1 className="text-4xl sm:text-5xl font-black tracking-tight bg-gradient-to-r from-brand-400 via-purple-400 to-blue-400 bg-clip-text text-transparent uppercase">
+            CERTIFY HUB
           </h1>
           <p className="text-gray-500 max-w-2xl mx-auto">
             Upload your template, position the name, preview, and send thousands of personalized certificates — all in memory, zero disk I/O.
@@ -145,10 +150,11 @@ export default function App() {
 
         {/* Footer */}
         <footer className="text-center py-6 text-gray-600 text-sm border-t border-gray-800/50">
-          <p>CertFlow — Certificate-as-a-Service • Zero-Disk • Smart Batching • Real-Time Progress</p>
+          <p>CERTIFY HUB — Certificate-as-a-Service • Zero-Disk • Smart Batching • Real-Time Progress</p>
           <p className="mt-2 text-brand-400 font-semibold tracking-wide">Made by Pankaj</p>
         </footer>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

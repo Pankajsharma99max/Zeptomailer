@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { startCampaign, stopCampaign, getFailedCSVUrl } from '../lib/api';
+import { startCampaign, stopCampaign, getFailedCSVUrl, sendQuickTest } from '../lib/api';
 
 const DEFAULT_PLAIN = 'Dear participant,\n\nPlease find your certificate of participation attached.\n\nBest regards,\nThe Team';
 
@@ -48,6 +48,7 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
   const [startIndex, setStartIndex] = useState(0);
   const [error, setError] = useState('');
   const [starting, setStarting] = useState(false);
+  const [testingSingle, setTestingSingle] = useState(false);
 
   useEffect(() => {
     if (lastSentCount !== undefined && lastSentCount > 0) {
@@ -78,6 +79,32 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
       setError(err.message);
     } finally {
       setStarting(false);
+    }
+  };
+
+  const handleQuickTest = async () => {
+    setError('');
+    setTestingSingle(true);
+    try {
+      const res = await sendQuickTest({
+        x_percent: coords.x_percent,
+        y_percent: coords.y_percent,
+        font_size: fontSize,
+        font_color: fontColor,
+        text_align: textAlign,
+        email_subject: subject,
+        email_body: body,
+        is_html: htmlMode,
+        test_mode: true,
+        start_index: 0,
+      });
+      // Show success message temporarily
+      setError(`✅ ${res.message}`);
+      setTimeout(() => setError(''), 5000);
+    } catch (err) {
+      setError(`❌ Quick test failed: ${err.message}`);
+    } finally {
+      setTestingSingle(false);
     }
   };
 
@@ -294,6 +321,29 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
             </svg>
             Stop Campaign
+          </button>
+        )}
+
+        {/* Quick Test Button */}
+        {!isRunning && (
+          <button
+            onClick={handleQuickTest}
+            disabled={testingSingle || starting}
+            className="btn-secondary flex items-center gap-2"
+            id="quick-test-btn"
+            title="Send a one-off test email to your admin address"
+          >
+            {testingSingle ? (
+              <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            )}
+            Send Quick Test
           </button>
         )}
 

@@ -39,6 +39,7 @@ class CampaignState:
         self.total_batches: int = 0
         self.status: str = "idle"
         self.current_name: str = ""
+        self.subject: str = ""
         self.start_time: Optional[float] = None
         self.failed_list: List[Dict[str, str]] = []
 
@@ -120,6 +121,7 @@ async def run_campaign(
     state.status = "running"
     state.total = len(recipients)
     state.start_time = time.time()
+    state.subject = config.email_subject
 
     batch_size = settings.BATCH_SIZE
     state.total_batches = (len(recipients) + batch_size - 1) // batch_size

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { fetchProgress, createProgressSocket } from '../lib/api';
 
 export default function ProgressBar({ isRunning }) {
   const [progress, setProgress] = useState(null);
@@ -9,12 +10,10 @@ export default function ProgressBar({ isRunning }) {
     if (!isRunning) return;
 
     // Try WebSocket first, fall back to polling
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
     let wsConnected = false;
 
     try {
-      const ws = new WebSocket(`${protocol}//${host}/ws/progress`);
+      const ws = createProgressSocket();
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -43,8 +42,7 @@ export default function ProgressBar({ isRunning }) {
     function startPolling() {
       pollRef.current = setInterval(async () => {
         try {
-          const res = await fetch('/api/campaign/progress');
-          const data = await res.json();
+          const data = await fetchProgress();
           setProgress(data);
           if (['completed', 'stopped', 'error'].includes(data.status)) {
             clearInterval(pollRef.current);

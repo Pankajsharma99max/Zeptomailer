@@ -28,6 +28,7 @@ async def send_single_email(
     pdf_bytes: bytes,
     filename: str = "Certificate.pdf",
     is_html: bool = False,
+    client: httpx.AsyncClient = None,
 ) -> Tuple[bool, str]:
     """
     Send a single email with a PDF attachment via ZeptoMail.
@@ -61,10 +62,8 @@ async def send_single_email(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(
-                ZEPTOMAIL_API_URL, json=payload, headers=headers
-            )
+        async def do_post(c):
+            resp = await c.post(ZEPTOMAIL_API_URL, json=payload, headers=headers)
             if resp.status_code in (200, 201):
                 logger.debug("Email sent to %s <%s>", recipient_name, recipient_email)
                 return True, ""
@@ -72,9 +71,18 @@ async def send_single_email(
                 error_msg = f"HTTP {resp.status_code}: {resp.text}"
                 logger.error("ZeptoMail API error for %s <%s>: %s", recipient_name, recipient_email, error_msg)
                 return False, error_msg
+
+        if client is None:
+            async with httpx.AsyncClient(timeout=30.0) as temp_client:
+                return await do_post(temp_client)
+        else:
+            return await do_post(client)
+            
     except Exception as e:
-        logger.error("Email send exception for %s <%s>: %s", recipient_name, recipient_email, e)
-        return False, str(e)
+        err_str = f"{type(e).__name__}: {str(e)}"
+        logger.error("Email send exception for %s <%s>: %s", recipient_name, recipient_email, err_str)
+        return False, err_str
+
 
 
 async def send_batch(
@@ -94,28 +102,40 @@ async def send_batch(
 
     Yields {email, name, success, error} dicts as they complete in real-time.
     """
-    async def _send_task(r: Dict[str, Any]) -> Dict[str, Any]:
-        success, error = await send_single_email(
-            token=token,
-            sender_email=sender_email,
-            sender_name=sender_name,
-            recipient_email=r["email"],
-            recipient_name=r["name"],
-            subject=subject,
-            body=body,
-            pdf_bytes=r["pdf_bytes"],
-            filename=f"{r['name']}_Certificate.pdf",
-            is_html=is_html,
-        )
-        return {
-            "email": r["email"],
-            "name": r["name"],
-            "success": success,
-            "error": error,
-        }
+    # Optimize connection pooling with a single persistent HTTP client for the batch.
+    # ZeptoMail still strictly enforces API burst rates. We must pace requests.
+    sem = asyncio.Semaphore(15)
+    limits = httpx.Limits(max_connections=15, max_keepalive_connections=15)
+    timeout = httpx.Timeout(45.0)
 
-    tasks = [_send_task(r) for r in recipients]
-    for coro in asyncio.as_completed(tasks):
-        result = await coro
-        yield result
+    async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
+        async def _send_task(r: Dict[str, Any]) -> Dict[str, Any]:
+            async with sem:
+                # Add a 0.2s minimum delay to enforce a safe throughput of ~50/sec max
+                # avoiding IP/Token temporary blocks from ZeptoMail.
+                await asyncio.sleep(0.2)
+                success, error = await send_single_email(
+                    client=client,
+                    token=token,
+                    sender_email=sender_email,
+                    sender_name=sender_name,
+                    recipient_email=r["email"],
+                    recipient_name=r["name"],
+                    subject=subject,
+                    body=body,
+                    pdf_bytes=r["pdf_bytes"],
+                    filename=f"{r['name']}_Certificate.pdf",
+                    is_html=is_html,
+                )
+                return {
+                    "email": r["email"],
+                    "name": r["name"],
+                    "success": success,
+                    "error": error,
+                }
+
+        tasks = [_send_task(r) for r in recipients]
+        for coro in asyncio.as_completed(tasks):
+            result = await coro
+            yield result
 

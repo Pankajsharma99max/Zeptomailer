@@ -40,7 +40,31 @@ async def get_status():
 
     return status
 
+from services.campaign_runner import campaign_state
+from datetime import datetime
+
 @router.get("/history")
 async def get_history():
     """Return the history of past campaigns."""
-    return store.history
+    history = store.history.copy()
+    if campaign_state.is_running:
+        timestamp = (
+            datetime.fromtimestamp(campaign_state.start_time).isoformat()
+            if campaign_state.start_time
+            else datetime.now().isoformat()
+        )
+        history.insert(0, {
+            "id": "current-running",
+            "timestamp": timestamp,
+            "subject": getattr(campaign_state, "subject", "Current Campaign"),
+            "total_sent": campaign_state.sent,
+            "total_failed": campaign_state.failed,
+            "status": "running"
+        })
+    return history
+
+@router.delete("/history")
+async def clear_history():
+    """Clear all campaign history."""
+    store.clear_history()
+    return {"message": "History cleared successfully"}

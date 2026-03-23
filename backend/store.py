@@ -97,6 +97,11 @@ class Store:
         self.history.insert(0, record)  # Newest first
         self.save_history()
 
+    def clear_history(self):
+        """Clear all campaign history records and save."""
+        self.history = []
+        self.save_history()
+
     # ---- Load from disk ----
 
     def load_from_disk(self):

@@ -86,3 +86,54 @@ async def download_failed_csv():
 async def get_progress():
     """Poll-based progress endpoint (alternative to WebSocket)."""
     return campaign_state.get_progress().model_dump()
+
+
+@router.post("/test-single")
+async def send_quick_test(config: CampaignConfig):
+    """Bypasses campaign queue to send a single immediate test email to the Admin."""
+    if not store.template_bytes:
+        raise HTTPException(
+            status_code=400, detail="No template uploaded yet"
+        )
+        
+    from config import get_settings
+    from services.pdf_engine import generate_certificate_pdf
+    from services.mailer import send_single_email
+    settings = get_settings()
+
+    test_name = "Quick Test User"
+    
+    try:
+        # Generate single PDF
+        pdf_bytes = generate_certificate_pdf(
+            template_bytes=store.template_bytes,
+            name=test_name,
+            x_percent=config.x_percent,
+            y_percent=config.y_percent,
+            font_size=config.font_size,
+            font_color=config.font_color,
+            text_align=config.text_align,
+        )
+        
+        # Send single email
+        success, error = await send_single_email(
+            token=settings.ZEPTOMAIL_TOKEN,
+            sender_email=settings.SENDER_EMAIL,
+            sender_name=settings.SENDER_NAME,
+            recipient_email=settings.ADMIN_EMAIL,
+            recipient_name=test_name,
+            subject=f"[TEST] {config.email_subject}",
+            body=config.email_body,
+            pdf_bytes=pdf_bytes,
+            filename="Test_Certificate.pdf",
+            is_html=config.is_html,
+        )
+        
+        if not success:
+            raise HTTPException(status_code=500, detail=f"Failed to send test email: {error}")
+            
+        return {"message": f"Test email sent successfully to {settings.ADMIN_EMAIL}!"}
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

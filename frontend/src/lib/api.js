@@ -66,6 +66,15 @@ export async function startCampaign(config) {
   return handleResponse(res);
 }
 
+export async function sendQuickTest(config) {
+  const res = await fetch(`${API_BASE}/api/campaign/test-single`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(config),
+  });
+  return handleResponse(res);
+}
+
 export async function stopCampaign() {
   const res = await fetch(`${API_BASE}/api/campaign/stop`, {
     method: 'POST',
@@ -91,6 +100,14 @@ export async function fetchStatus() {
 
 export async function fetchHistory() {
   const res = await fetch(`${API_BASE}/api/status/history`, { headers: getHeaders() });
+  return handleResponse(res);
+}
+
+export async function clearHistory() {
+  const res = await fetch(`${API_BASE}/api/status/history`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
   return handleResponse(res);
 }
 
