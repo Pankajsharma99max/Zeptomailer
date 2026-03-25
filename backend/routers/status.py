@@ -7,7 +7,10 @@ and for debugging deployment issues.
 
 import os
 import logging
-from fastapi import APIRouter
+import logging
+from fastapi import APIRouter, Depends
+from models import User, CampaignConfig
+from auth import get_current_user
 from store import store
 from config import get_settings
 
@@ -20,14 +23,14 @@ DEFAULT_FONT = os.path.join(FONT_DIR, "Roboto-Regular.ttf")
 
 
 @router.get("")
-async def get_status():
+async def get_status(user: User = Depends(get_current_user)):
     """
     Return the current state of the application.
     Frontend calls this on mount to restore UI after a refresh.
     """
     settings = get_settings()
 
-    status = store.get_status()
+    status = store.get_draft_state(user.id)
 
     # Add deployment diagnostics
     status["zeptomail_configured"] = bool(settings.ZEPTOMAIL_TOKEN)
@@ -42,11 +45,34 @@ async def get_status():
 
 from services.campaign_runner import campaign_state
 from datetime import datetime
+from database import get_connection, db_cursor
 
 @router.get("/history")
 async def get_history():
-    """Return the history of past campaigns."""
-    history = store.history.copy()
+    """Return the history of past campaigns from DB."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, created_at, config, total_count, last_sent_count, status FROM campaigns ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    history = []
+    for r in rows:
+        try:
+            config = CampaignConfig.model_validate_json(r["config"])
+            subject = config.email_subject
+        except Exception:
+            subject = "Unknown Campaign"
+            
+        history.append({
+            "id": r["id"],
+            "timestamp": datetime.fromtimestamp(r["created_at"]).isoformat(),
+            "subject": subject,
+            "total_sent": r["last_sent_count"],
+            "total_failed": r["total_count"] - r["last_sent_count"],
+            "status": r["status"]
+        })
+        
     if campaign_state.is_running:
         timestamp = (
             datetime.fromtimestamp(campaign_state.start_time).isoformat()
@@ -65,6 +91,7 @@ async def get_history():
 
 @router.delete("/history")
 async def clear_history():
-    """Clear all campaign history."""
-    store.clear_history()
+    """Clear all campaign history from DB."""
+    with db_cursor() as cursor:
+        cursor.execute("DELETE FROM campaigns")
     return {"message": "History cleared successfully"}

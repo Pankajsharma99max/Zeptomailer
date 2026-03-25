@@ -5,10 +5,9 @@ WebSocket Progress Router — Real-time campaign progress updates.
 import asyncio
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import time
+from database import get_connection
 from services.campaign_runner import campaign_state
-from config import get_settings
-
-settings = get_settings()
 
 router = APIRouter(tags=["progress"])
 
@@ -21,8 +20,14 @@ async def websocket_progress(websocket: WebSocket, token: str = None):
     """
     await websocket.accept()
 
-    # Authentication
-    if settings.APP_PASSWORD and token != settings.APP_PASSWORD:
+    # Authentication via token
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM sessions WHERE token = ?", (token,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
         await websocket.close(code=1008) # Policy Violation
         return
 

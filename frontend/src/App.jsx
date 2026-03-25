@@ -8,6 +8,8 @@ import ProgressBar from './components/ProgressBar';
 import { fetchStatus, getTemplateImageUrl, fetchProgress } from './lib/api';
 import CampaignHistory from './components/CampaignHistory';
 import Login from './components/Login';
+import AdminDashboard from './components/AdminDashboard';
+import Settings from './components/Settings';
 
 export default function App() {
   const [coords, setCoords] = useState({ x_percent: 50, y_percent: 50 });
@@ -21,11 +23,20 @@ export default function App() {
   const [restoredTemplateInfo, setRestoredTemplateInfo] = useState(null);
   const [recipientCount, setRecipientCount] = useState(0);
   const [lastSentCount, setLastSentCount] = useState(0);
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('app_password'));
+  
+  const [user, setUser] = useState(() => {
+    const token = localStorage.getItem('auth_token');
+    const role = localStorage.getItem('user_role');
+    const username = localStorage.getItem('user_name');
+    return token ? { token, role, username } : null;
+  });
+
+  const [view, setView] = useState('campaign'); // 'campaign', 'admin', or 'settings'
 
   // On mount: check if backend already has data (survives refresh)
+// ... (rest of useEffects)
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!user) return;
     fetchStatus()
       .then((data) => {
         if (data.template_loaded) {
@@ -44,9 +55,9 @@ export default function App() {
         }
       })
       .catch((err) => {
-        // Backend not available yet or 401, ignore here since API handler handles 401
+        // Backend handle 401 via api.js
       });
-  }, [isAuthenticated]);
+  }, [user]);
 
   // Poll progress to detect campaign end
   useEffect(() => {
@@ -63,13 +74,26 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isRunning]);
 
-  if (!isAuthenticated) {
-    return (
-      <Login onLogin={(pwd) => {
-        localStorage.setItem('app_password', pwd);
-        setIsAuthenticated(true);
-      }} />
-    );
+  const handleLogin = (loginData) => {
+    localStorage.setItem('auth_token', loginData.access_token);
+    localStorage.setItem('user_role', loginData.user.role);
+    localStorage.setItem('user_name', loginData.user.username);
+    setUser({
+      token: loginData.access_token,
+      role: loginData.user.role,
+      username: loginData.user.username
+    });
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_role');
+    localStorage.removeItem('user_name');
+    setUser(null);
+  };
+
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
@@ -80,79 +104,113 @@ export default function App() {
       <div className="fixed bottom-[-20%] left-[20%] w-[45rem] h-[45rem] bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob animation-delay-4000 z-0 pointer-events-none"></div>
 
       <div className="relative z-10 flex flex-col min-h-screen">
-        <Navbar />
+        <Navbar onLogout={handleLogout} username={user.username} role={user.role} />
 
         <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 space-y-6">
-          {/* Header */}
-        <div className="text-center space-y-2 py-4">
-          <h1 className="text-4xl sm:text-5xl font-black tracking-tight bg-gradient-to-r from-brand-400 via-purple-400 to-blue-400 bg-clip-text text-transparent uppercase">
-            CERTIFY HUB
-          </h1>
-          <p className="text-gray-500 max-w-2xl mx-auto">
-            Upload your template, position the name, preview, and send thousands of personalized certificates — all in memory, zero disk I/O.
-          </p>
-        </div>
+          {/* View Switcher for Admin */}
+          {user.role === 'admin' && (
+            <div className="flex justify-center gap-4 mb-8">
+              <button
+                onClick={() => setView('campaign')}
+                className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-wider transition-all ${
+                  view === 'campaign' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                Campaigns
+              </button>
+              <button
+                onClick={() => setView('admin')}
+                className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-wider transition-all ${
+                  view === 'admin' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                Admin Panel
+              </button>
+              <button
+                onClick={() => setView('settings')}
+                className={`px-6 py-2 rounded-full text-sm font-bold uppercase tracking-wider transition-all ${
+                  view === 'settings' ? 'bg-brand-500 text-white shadow-lg shadow-brand-500/20' : 'bg-white/5 text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                Settings
+              </button>
+            </div>
+          )}
 
-        {/* Step indicators */}
-        <div className="flex items-center justify-center gap-2 flex-wrap">
-          <StepBadge number={1} label="Template" active={true} />
-          <Connector />
-          <StepBadge number={2} label="Recipients" active={csvUploaded} />
-          <Connector />
-          <StepBadge number={3} label="Preview" active={csvUploaded} />
-          <Connector />
-          <StepBadge number={4} label="Send" active={csvUploaded} />
-        </div>
+          {view === 'admin' && user.role === 'admin' ? (
+            <AdminDashboard />
+          ) : view === 'settings' && user.role === 'admin' ? (
+            <Settings />
+          ) : (
+            <>
+              {/* Campaign View */}
+              <div className="text-center space-y-2 py-4">
+                <h1 className="text-4xl sm:text-5xl font-black tracking-tight bg-gradient-to-r from-brand-400 via-purple-400 to-blue-400 bg-clip-text text-transparent uppercase">
+                  CERTIFY HUB
+                </h1>
+                <p className="text-gray-500 max-w-2xl mx-auto text-sm sm:text-base">
+                  Logged in as <span className="text-brand-400 font-bold">{user.username}</span> ({user.role})
+                </p>
+              </div>
 
-        {/* Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left column */}
-          <div className="space-y-6">
-            <OverlayEditor
-              coords={coords}
-              onCoordsChange={setCoords}
-              fontSize={fontSize}
-              onFontSizeChange={setFontSize}
-              fontColor={fontColor}
-              onFontColorChange={setFontColor}
-              textAlign={textAlign}
-              onTextAlignChange={setTextAlign}
-              restoredTemplateUrl={restoredTemplateUrl}
-              restoredTemplateInfo={restoredTemplateInfo}
-            />
-            <CsvUploader
-              onUploaded={(data) => setCsvUploaded(true)}
-              restoredCount={recipientCount}
-            />
-          </div>
+              {/* Step indicators */}
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <StepBadge number={1} label="Template" active={true} />
+                <Connector />
+                <StepBadge number={2} label="Recipients" active={csvUploaded} />
+                <Connector />
+                <StepBadge number={3} label="Preview" active={csvUploaded} />
+                <Connector />
+                <StepBadge number={4} label={user.role === 'admin' ? 'Send' : 'Approval'} active={csvUploaded} />
+              </div>
 
-          {/* Right column */}
-          <div className="space-y-6">
-            <PreviewPanel coords={coords} fontSize={fontSize} fontColor={fontColor} textAlign={textAlign} />
-            <CampaignControls
-              coords={coords}
-              fontSize={fontSize}
-              fontColor={fontColor}
-              textAlign={textAlign}
-              isRunning={isRunning}
-              onRunningChange={setIsRunning}
-              lastStatus={lastStatus}
-              lastSentCount={lastSentCount}
-            />
-          </div>
-        </div>
+              {/* Main grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-6">
+                  <OverlayEditor
+                    coords={coords}
+                    onCoordsChange={setCoords}
+                    fontSize={fontSize}
+                    onFontSizeChange={setFontSize}
+                    fontColor={fontColor}
+                    onFontColorChange={setFontColor}
+                    textAlign={textAlign}
+                    onTextAlignChange={setTextAlign}
+                    restoredTemplateUrl={restoredTemplateUrl}
+                    restoredTemplateInfo={restoredTemplateInfo}
+                  />
+                  <CsvUploader
+                    onUploaded={() => { setCsvUploaded(true); setRecipientCount(prev => prev || 1); }}
+                    restoredCount={recipientCount}
+                  />
+                </div>
 
-        {/* Progress bar — full width */}
-        <ProgressBar isRunning={isRunning} />
+                <div className="space-y-6">
+                  <PreviewPanel coords={coords} fontSize={fontSize} fontColor={fontColor} textAlign={textAlign} />
+                  <CampaignControls
+                    coords={coords}
+                    fontSize={fontSize}
+                    fontColor={fontColor}
+                    textAlign={textAlign}
+                    isRunning={isRunning}
+                    onRunningChange={setIsRunning}
+                    lastStatus={lastStatus}
+                    lastSentCount={lastSentCount}
+                    userRole={user.role}
+                  />
+                </div>
+              </div>
 
-        {/* Campaign History Analytics */}
-        <CampaignHistory />
+              <ProgressBar isRunning={isRunning} />
+              <CampaignHistory />
+            </>
+          )}
 
-        {/* Footer */}
-        <footer className="text-center py-6 text-gray-600 text-sm border-t border-gray-800/50">
-          <p>CERTIFY HUB — Certificate-as-a-Service • Zero-Disk • Smart Batching • Real-Time Progress</p>
-          <p className="mt-2 text-brand-400 font-semibold tracking-wide">Made by Pankaj</p>
-        </footer>
+          {/* Footer */}
+          <footer className="text-center py-12 text-gray-600 text-xs border-t border-gray-800/50">
+            <p>CERTIFY HUB — Role Based Access Control • Centralized Management • Smart Throttling</p>
+            <p className="mt-2 text-brand-400 font-semibold tracking-wide">Made by Pankaj</p>
+          </footer>
         </main>
       </div>
     </div>
@@ -161,12 +219,12 @@ export default function App() {
 
 function StepBadge({ number, label, active }) {
   return (
-    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300 ${
+    <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs sm:text-sm font-medium transition-all duration-300 ${
       active
         ? 'bg-brand-500/15 text-brand-400 border border-brand-500/30'
         : 'bg-gray-800/40 text-gray-600 border border-gray-800/50'
     }`}>
-      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+      <span className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-bold ${
         active ? 'bg-brand-500 text-white' : 'bg-gray-700 text-gray-500'
       }`}>
         {number}
@@ -177,5 +235,5 @@ function StepBadge({ number, label, active }) {
 }
 
 function Connector() {
-  return <div className="w-6 h-px bg-gray-700 hidden sm:block" />;
+  return <div className="w-4 sm:w-6 h-px bg-gray-700 hidden sm:block" />;
 }

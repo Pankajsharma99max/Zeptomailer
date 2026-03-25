@@ -5,14 +5,15 @@ Stores uploaded data in the shared Store for
 downstream use by campaign and preview services.
 """
 
-import io
 import logging
 import csv
-from fastapi import APIRouter, UploadFile, File, HTTPException
+import io
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import Response
-from services.campaign_runner import parse_csv
-from models import Recipient
+from models import Recipient, User
+from auth import get_current_user
 from store import store
+from services.campaign_runner import parse_csv
 from typing import List
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/api/upload", tags=["upload"])
 
 
 @router.post("/csv")
-async def upload_csv(file: UploadFile = File(...)):
+async def upload_csv(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     """Upload a CSV file with 'name' and 'email' columns."""
     if not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="File must be a CSV")
@@ -29,11 +30,11 @@ async def upload_csv(file: UploadFile = File(...)):
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="CSV file is empty")
-
-    store.csv_bytes = content
+    if len(content) > 10 * 1024 * 1024: # 10MB limit
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
 
     try:
-        store.recipients = parse_csv(content)
+        recipients = parse_csv(content)
     except Exception as e:
         logger.error("CSV parse error: %s", e)
         raise HTTPException(
@@ -41,26 +42,26 @@ async def upload_csv(file: UploadFile = File(...)):
         )
 
     # Persist to disk so data survives page refreshes
-    store.save_csv()
+    store.save_draft_csv(user.id, content, recipients)
 
-    if len(store.recipients) == 0:
+    if len(recipients) == 0:
         raise HTTPException(
             status_code=400,
             detail="No valid rows found. Ensure CSV has 'name' and 'email' columns.",
         )
 
     return {
-        "message": f"Uploaded {len(store.recipients)} recipients",
-        "count": len(store.recipients),
+        "message": f"Uploaded {len(recipients)} recipients",
+        "count": len(recipients),
         "sample": [
             {"name": r.name, "email": r.email}
-            for r in store.recipients[:5]
+            for r in recipients[:5]
         ],
     }
 
 
 @router.post("/template")
-async def upload_template(file: UploadFile = File(...)):
+async def upload_template(file: UploadFile = File(...), user: User = Depends(get_current_user)):
     """Upload a JPG/PNG certificate template image."""
     allowed = (".jpg", ".jpeg", ".png")
     if not any(file.filename.lower().endswith(ext) for ext in allowed):
@@ -71,11 +72,11 @@ async def upload_template(file: UploadFile = File(...)):
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=400, detail="Image file is empty")
-
-    store.template_bytes = content
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 10MB)")
 
     # Persist to disk so data survives page refreshes
-    store.save_template()
+    store.save_draft_template(user.id, content)
 
     # Get image dimensions for the frontend
     from PIL import Image
@@ -92,18 +93,19 @@ async def upload_template(file: UploadFile = File(...)):
 
 
 @router.get("/template-image")
-async def get_template_image():
+async def get_template_image(user: User = Depends(get_current_user)):
     """Serve the stored template image so the frontend can restore it after refresh."""
-    if not store.template_bytes:
+    template_bytes, _ = store.get_draft_data(user.id)
+    if not template_bytes:
         raise HTTPException(status_code=404, detail="No template uploaded")
 
     # Detect content type
     content_type = "image/jpeg"
-    if store.template_bytes[:8].startswith(b'\x89PNG'):
+    if template_bytes[:8].startswith(b'\x89PNG'):
         content_type = "image/png"
 
     return Response(
-        content=store.template_bytes,
+        content=template_bytes,
         media_type=content_type,
         headers={"Cache-Control": "no-cache"},
     )

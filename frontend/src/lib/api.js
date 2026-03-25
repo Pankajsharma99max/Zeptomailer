@@ -1,16 +1,17 @@
 const API_BASE = '';
 
 function getHeaders(extraHeaders = {}) {
-  const pwd = localStorage.getItem('app_password');
+  const token = localStorage.getItem('auth_token');
   return {
     ...extraHeaders,
-    ...(pwd ? { 'x-api-key': pwd } : {})
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
 }
 
 async function handleResponse(res) {
   if (res.status === 401) {
-    localStorage.removeItem('app_password');
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_role');
     window.location.reload();
   }
   if (!res.ok) {
@@ -18,12 +19,42 @@ async function handleResponse(res) {
     try { err = await res.json(); } catch(e) {}
     throw new Error(err.detail || 'API Error');
   }
-  // For file responses like template image
   const contentType = res.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
     return res.json();
   }
   return res;
+}
+
+export async function login(username, password) {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  return handleResponse(res);
+}
+
+export async function fetchUsers() {
+  const res = await fetch(`${API_BASE}/api/auth/users`, { headers: getHeaders() });
+  return handleResponse(res);
+}
+
+export async function createUser(userData) {
+  const res = await fetch(`${API_BASE}/api/auth/users`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(userData),
+  });
+  return handleResponse(res);
+}
+
+export async function deleteUser(userId) {
+  const res = await fetch(`${API_BASE}/api/auth/users/${userId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
 }
 
 export async function uploadCSV(file) {
@@ -57,11 +88,24 @@ export async function fetchPreviews(config) {
   return handleResponse(res);
 }
 
-export async function startCampaign(config) {
-  const res = await fetch(`${API_BASE}/api/campaign/start`, {
+export async function submitCampaign(config) {
+  const res = await fetch(`${API_BASE}/api/campaign/submit`, {
     method: 'POST',
     headers: getHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(config),
+  });
+  return handleResponse(res);
+}
+
+export async function fetchPendingCampaigns() {
+  const res = await fetch(`${API_BASE}/api/campaign/pending`, { headers: getHeaders() });
+  return handleResponse(res);
+}
+
+export async function approveCampaign(campaignId) {
+  const res = await fetch(`${API_BASE}/api/campaign/approve/${campaignId}`, {
+    method: 'POST',
+    headers: getHeaders(),
   });
   return handleResponse(res);
 }
@@ -89,8 +133,8 @@ export async function fetchProgress() {
 }
 
 export function getFailedCSVUrl() {
-  const pwd = localStorage.getItem('app_password') || '';
-  return `${API_BASE}/api/campaign/failed-csv?token=${pwd}`;
+  const token = localStorage.getItem('auth_token') || '';
+  return `${API_BASE}/api/campaign/failed-csv?token=${token}`;
 }
 
 export async function fetchStatus() {
@@ -112,13 +156,27 @@ export async function clearHistory() {
 }
 
 export function getTemplateImageUrl() {
-  const pwd = localStorage.getItem('app_password') || '';
-  return `${API_BASE}/api/upload/template-image?token=${pwd}`;
+  const token = localStorage.getItem('auth_token') || '';
+  return `${API_BASE}/api/upload/template-image?token=${token}`;
+}
+
+export async function fetchSettings() {
+  const res = await fetch(`${API_BASE}/api/settings`, { headers: getHeaders() });
+  return handleResponse(res);
+}
+
+export async function updateSettings(settings) {
+  const res = await fetch(`${API_BASE}/api/settings`, {
+    method: 'POST',
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(settings),
+  });
+  return handleResponse(res);
 }
 
 export function createProgressSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const host = window.location.host;
-  const pwd = localStorage.getItem('app_password') || '';
-  return new WebSocket(`${protocol}//${host}/ws/progress?token=${pwd}`);
+  const token = localStorage.getItem('auth_token') || '';
+  return new WebSocket(`${protocol}//${host}/ws/progress?token=${token}`);
 }

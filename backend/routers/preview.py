@@ -7,8 +7,9 @@ on the template at the specified coordinates.
 
 import base64
 import random
-from fastapi import APIRouter, HTTPException
-from models import PreviewRequest
+from fastapi import APIRouter, HTTPException, Depends
+from models import PreviewRequest, User
+from auth import get_current_user
 from store import store
 from services.pdf_engine import generate_certificate_image
 
@@ -16,27 +17,29 @@ router = APIRouter(prefix="/api/preview", tags=["preview"])
 
 
 @router.post("")
-async def preview_certificates(req: PreviewRequest):
+async def preview_certificates(req: PreviewRequest, user: User = Depends(get_current_user)):
     """
     Generate preview certificate images for random names.
     Returns base64-encoded JPEG images.
     """
-    if not store.template_bytes:
+    template_bytes, recipients = store.get_draft_data(user.id)
+    
+    if not template_bytes:
         raise HTTPException(
             status_code=400, detail="No template uploaded yet"
         )
 
-    if not store.recipients:
+    if not recipients:
         raise HTTPException(status_code=400, detail="No CSV uploaded yet")
 
     # Pick random sample
-    count = min(req.sample_count, len(store.recipients))
-    sample = random.sample(store.recipients, count)
+    count = min(req.sample_count, len(recipients))
+    sample = random.sample(recipients, count)
 
     previews = []
     for r in sample:
         img_bytes = generate_certificate_image(
-            template_bytes=store.template_bytes,
+            template_bytes=template_bytes,
             name=r.name,
             x_percent=req.x_percent,
             y_percent=req.y_percent,

@@ -1,177 +1,148 @@
 """
 Shared store for uploaded data — with file-based persistence.
 
-Saves CSV and template bytes to disk so they survive page refreshes
-and (on Render) container restarts within the same deploy.
+Now handles multi-tenant draft state by user_id and persistent
+campaign state by campaign_id.
 """
 
-import io
 import os
 import json
 import logging
-from typing import List, Optional
+import shutil
+import re
+from typing import List, Optional, Tuple
 from models import Recipient
 
 logger = logging.getLogger(__name__)
 
-# Persistent storage directory — /tmp survives within a single Render deploy
+# Persistent storage directory
 DATA_DIR = os.environ.get("CERTFLOW_DATA_DIR", "/tmp/certflow_data")
 
 
 class Store:
-    """Global store for CSV and template data, backed by disk."""
+    """Manager for user drafts and active campaigns backed by disk."""
 
     def __init__(self):
-        self.csv_bytes: bytes = b""
-        self.template_bytes: bytes = b""
-        self.recipients: List[Recipient] = []
-        self.last_sent_count: int = 0
-        self.history: List[dict] = []
-        self._ensure_dir()
+        self._ensure_dir(DATA_DIR)
 
-    def _ensure_dir(self):
-        os.makedirs(DATA_DIR, exist_ok=True)
+    def _ensure_dir(self, path: str):
+        os.makedirs(path, exist_ok=True)
 
-    def _csv_path(self) -> str:
-        return os.path.join(DATA_DIR, "uploaded.csv")
+    def _safe_id(self, id_str: str) -> str:
+        """Validate ID to prevent path traversal."""
+        if not re.match(r"^[a-zA-Z0-9\-_]+$", id_str):
+            raise ValueError("Invalid ID format")
+        return id_str
 
-    def _template_path(self) -> str:
-        return os.path.join(DATA_DIR, "template.img")
+    def get_draft_dir(self, user_id: str) -> str:
+        user_id = self._safe_id(user_id)
+        d = os.path.join(DATA_DIR, "drafts", user_id)
 
-    def _recipients_path(self) -> str:
-        return os.path.join(DATA_DIR, "recipients.json")
+        self._ensure_dir(d)
+        return d
 
-    def _progress_path(self) -> str:
-        return os.path.join(DATA_DIR, "progress.json")
+    def get_campaign_dir(self, campaign_id: str) -> str:
+        campaign_id = self._safe_id(campaign_id)
+        d = os.path.join(DATA_DIR, "campaigns", campaign_id)
 
-    def _history_path(self) -> str:
-        return os.path.join(DATA_DIR, "history.json")
+        self._ensure_dir(d)
+        return d
 
-    # ---- Save to disk ----
+    # ---- Draft Methods ----
 
-    def save_csv(self):
-        """Persist CSV bytes and parsed recipients to disk."""
-        try:
-            self._ensure_dir()
-            with open(self._csv_path(), "wb") as f:
-                f.write(self.csv_bytes)
-            # Also save parsed recipients as JSON
-            data = [{"name": r.name, "email": r.email} for r in self.recipients]
-            with open(self._recipients_path(), "w", encoding="utf-8") as f:
-                json.dump(data, f)
-            logger.info("CSV saved to disk (%d bytes, %d recipients)", len(self.csv_bytes), len(self.recipients))
-        except Exception as e:
-            logger.error("Failed to save CSV to disk: %s", e)
+    def save_draft_csv(self, user_id: str, csv_bytes: bytes, recipients: List[Recipient]):
+        d = self.get_draft_dir(user_id)
+        with open(os.path.join(d, "uploaded.csv"), "wb") as f:
+            f.write(csv_bytes)
+        data = [{"name": r.name, "email": r.email} for r in recipients]
+        with open(os.path.join(d, "recipients.json"), "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        logger.info(f"Saved draft CSV for user {user_id} ({len(recipients)} recipients)")
 
-    def save_template(self):
-        """Persist template image bytes to disk."""
-        try:
-            self._ensure_dir()
-            with open(self._template_path(), "wb") as f:
-                f.write(self.template_bytes)
-            logger.info("Template saved to disk (%d bytes)", len(self.template_bytes))
-        except Exception as e:
-            logger.error("Failed to save template to disk: %s", e)
+    def save_draft_template(self, user_id: str, template_bytes: bytes):
+        d = self.get_draft_dir(user_id)
+        with open(os.path.join(d, "template.img"), "wb") as f:
+            f.write(template_bytes)
+        logger.info(f"Saved draft template for user {user_id}")
 
-    def save_progress(self, sent: int):
-        """Persist the number of sent emails to resume later."""
-        try:
-            self._ensure_dir()
-            with open(self._progress_path(), "w", encoding="utf-8") as f:
-                json.dump({"last_sent_count": sent}, f)
-            self.last_sent_count = sent
-        except Exception as e:
-            logger.error("Failed to save progress to disk: %s", e)
-
-    def save_history(self):
-        """Persist the campaign history to disk."""
-        try:
-            self._ensure_dir()
-            with open(self._history_path(), "w", encoding="utf-8") as f:
-                json.dump(self.history, f)
-        except Exception as e:
-            logger.error("Failed to save history to disk: %s", e)
-
-    def add_history_record(self, record: dict):
-        """Add a new campaign record and save to disk."""
-        self.history.insert(0, record)  # Newest first
-        self.save_history()
-
-    def clear_history(self):
-        """Clear all campaign history records and save."""
-        self.history = []
-        self.save_history()
-
-    # ---- Load from disk ----
-
-    def load_from_disk(self):
-        """Reload CSV and template from disk if they exist."""
-        loaded = []
-        try:
-            csv_path = self._csv_path()
-            if os.path.exists(csv_path):
-                with open(csv_path, "rb") as f:
-                    self.csv_bytes = f.read()
-                loaded.append("csv")
-
-            recipients_path = self._recipients_path()
-            if os.path.exists(recipients_path):
-                with open(recipients_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                self.recipients = [Recipient(name=r["name"], email=r["email"]) for r in data]
-                loaded.append(f"recipients({len(self.recipients)})")
-
-            template_path = self._template_path()
-            if os.path.exists(template_path):
-                with open(template_path, "rb") as f:
-                    self.template_bytes = f.read()
-                loaded.append("template")
-
-            progress_path = self._progress_path()
-            if os.path.exists(progress_path):
-                with open(progress_path, "r", encoding="utf-8") as f:
-                    p_data = json.load(f)
-                self.last_sent_count = p_data.get("last_sent_count", 0)
-                loaded.append("progress")
-
-            history_path = self._history_path()
-            if os.path.exists(history_path):
-                with open(history_path, "r", encoding="utf-8") as f:
-                    self.history = json.load(f)
-                loaded.append(f"history({len(self.history)})")
-
-            if loaded:
-                logger.info("Restored from disk: %s", ", ".join(loaded))
-            else:
-                logger.info("No persisted data found on disk.")
-        except Exception as e:
-            logger.error("Failed to load from disk: %s", e)
-
-    # ---- Status helpers ----
-
-    def get_status(self) -> dict:
-        """Return a status dict for the /api/status endpoint."""
-        status = {
-            "template_loaded": bool(self.template_bytes),
-            "template_size_bytes": len(self.template_bytes),
-            "csv_loaded": bool(self.csv_bytes),
-            "recipient_count": len(self.recipients),
-            "last_sent_count": getattr(self, "last_sent_count", 0),
-            "recipients_sample": [
-                {"name": r.name, "email": r.email}
-                for r in self.recipients[:5]
-            ],
+    def get_draft_state(self, user_id: str) -> dict:
+        d = self.get_draft_dir(user_id)
+        state = {
+            "template_loaded": os.path.exists(os.path.join(d, "template.img")),
+            "template_size_bytes": 0,
+            "csv_loaded": os.path.exists(os.path.join(d, "uploaded.csv")),
+            "recipient_count": 0,
+            "last_sent_count": 0, # Drafts haven't been sent
+            "recipients_sample": []
         }
-        # Get template dimensions if loaded
-        if self.template_bytes:
+        t_path = os.path.join(d, "template.img")
+        if state["template_loaded"]:
+            state["template_size_bytes"] = os.path.getsize(t_path)
             try:
                 from PIL import Image
-                img = Image.open(io.BytesIO(self.template_bytes))
-                status["template_width"] = img.size[0]
-                status["template_height"] = img.size[1]
+                import io
+                with open(t_path, "rb") as f:
+                    img = Image.open(io.BytesIO(f.read()))
+                    state["template_width"] = img.size[0]
+                    state["template_height"] = img.size[1]
             except Exception:
                 pass
-        return status
+
+        r_path = os.path.join(d, "recipients.json")
+        if os.path.exists(r_path):
+            with open(r_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                state["recipient_count"] = len(data)
+                state["recipients_sample"] = data[:5]
+        return state
+
+    def get_draft_data(self, user_id: str) -> Tuple[Optional[bytes], List[Recipient]]:
+        d = self.get_draft_dir(user_id)
+        template_bytes = None
+        t_path = os.path.join(d, "template.img")
+        if os.path.exists(t_path):
+            with open(t_path, "rb") as f:
+                template_bytes = f.read()
+
+        recipients = []
+        r_path = os.path.join(d, "recipients.json")
+        if os.path.exists(r_path):
+            with open(r_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                recipients = [Recipient(name=r["name"], email=r["email"]) for r in data]
+
+        return template_bytes, recipients
+
+    def load_from_disk(self):
+        """Legacy compatibility method for startup."""
+        pass
+
+    # ---- Campaign Methods ----
+
+    def promote_draft_to_campaign(self, user_id: str, campaign_id: str):
+        """Copy draft sandbox to the persistent campaign sandbox."""
+        draft_dir = self.get_draft_dir(user_id)
+        camp_dir = self.get_campaign_dir(campaign_id)
+        if os.path.exists(draft_dir):
+            shutil.copytree(draft_dir, camp_dir, dirs_exist_ok=True)
+            logger.info(f"Promoted draft {user_id} -> campaign {campaign_id}")
+
+    def get_campaign_data(self, campaign_id: str) -> Tuple[Optional[bytes], List[Recipient]]:
+        d = self.get_campaign_dir(campaign_id)
+        template_bytes = None
+        t_path = os.path.join(d, "template.img")
+        if os.path.exists(t_path):
+            with open(t_path, "rb") as f:
+                template_bytes = f.read()
+
+        recipients = []
+        r_path = os.path.join(d, "recipients.json")
+        if os.path.exists(r_path):
+            with open(r_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                recipients = [Recipient(name=r["name"], email=r["email"]) for r in data]
+
+        return template_bytes, recipients
 
 
 store = Store()

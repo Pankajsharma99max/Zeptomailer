@@ -25,7 +25,7 @@ async def send_single_email(
     recipient_name: str,
     subject: str,
     body: str,
-    pdf_bytes: bytes,
+    pdf_bytes: bytes = None,
     filename: str = "Certificate.pdf",
     is_html: bool = False,
     client: httpx.AsyncClient = None,
@@ -46,14 +46,16 @@ async def send_single_email(
         ],
         "subject": subject,
         "htmlbody": body if is_html else f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.6'>{body.replace(chr(10), '<br>')}</div>",
-        "attachments": [
+    }
+
+    if pdf_bytes:
+        payload["attachments"] = [
             {
                 "content": base64.b64encode(pdf_bytes).decode("utf-8"),
                 "mime_type": "application/pdf",
                 "name": filename,
             }
-        ],
-    }
+        ]
 
     headers = {
         "Authorization": f"Zoho-enczapikey {token}",
@@ -93,6 +95,7 @@ async def send_batch(
     subject: str,
     body: str,
     is_html: bool = False,
+    is_newsletter: bool = False,
 ):
     """
     Send a batch of emails concurrently. Each recipient dict must contain:
@@ -103,17 +106,17 @@ async def send_batch(
     Yields {email, name, success, error} dicts as they complete in real-time.
     """
     # Optimize connection pooling with a single persistent HTTP client for the batch.
-    # ZeptoMail still strictly enforces API burst rates. We must pace requests.
-    sem = asyncio.Semaphore(15)
-    limits = httpx.Limits(max_connections=15, max_keepalive_connections=15)
+    concurrency = 50 if is_newsletter else 15
+    sem = asyncio.Semaphore(concurrency)
+    limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
     timeout = httpx.Timeout(45.0)
 
     async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
         async def _send_task(r: Dict[str, Any]) -> Dict[str, Any]:
             async with sem:
-                # Add a 0.2s minimum delay to enforce a safe throughput of ~50/sec max
-                # avoiding IP/Token temporary blocks from ZeptoMail.
-                await asyncio.sleep(0.2)
+                # Add a smaller delay for newsletters (no attachments), larger for heavy PDFs
+                delay = 0.05 if is_newsletter else 0.2
+                await asyncio.sleep(delay)
                 success, error = await send_single_email(
                     client=client,
                     token=token,

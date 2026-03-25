@@ -19,6 +19,7 @@ from models import CampaignConfig, ProgressUpdate, Recipient
 from services.pdf_engine import generate_certificate_pdf
 from services.mailer import send_batch
 from store import store
+from database import db_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class CampaignState:
         self.subject: str = ""
         self.start_time: Optional[float] = None
         self.failed_list: List[Dict[str, str]] = []
+        self.error: Optional[str] = None
 
     def get_progress(self) -> ProgressUpdate:
         elapsed = time.time() - self.start_time if self.start_time else 0
@@ -93,7 +95,9 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
         normalized = {k.strip().lower(): v.strip() for k, v in row.items()}
         name = normalized.get("name", "")
         email = normalized.get("email", "")
-        if name and email:
+        
+        # Skip if email is missing, empty, or '0'
+        if name and email and email != "0":
             recipients.append(Recipient(name=name, email=email))
 
     return recipients
@@ -103,27 +107,36 @@ async def run_campaign(
     recipients: List[Recipient],
     template_bytes: bytes,
     config: CampaignConfig,
+    campaign_id: Optional[str] = None,
 ):
     """
     Execute the full certificate email campaign.
-
-    - Chunks recipients into batches of BATCH_SIZE
-    - Generates PDFs in memory
-    - Sends via ZeptoMail
-    - Sleeps BATCH_DELAY_SECONDS between batches (rate limiter)
-    - Tracks progress via campaign_state
     """
     settings = get_settings()
     state = campaign_state
 
     state.reset()
+    
+    # Fetch dynamic sender_name from DB, fallback to .env settings
+    sender_name = settings.SENDER_NAME
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM app_settings WHERE key = ?", ("sender_name",))
+        row = cursor.fetchone()
+        if row:
+            sender_name = row["value"]
+        conn.close()
+    except Exception as e:
+        logger.error("Failed to fetch sender_name from DB: %s", e)
+
     state.is_running = True
     state.status = "running"
     state.total = len(recipients)
     state.start_time = time.time()
     state.subject = config.email_subject
 
-    batch_size = settings.BATCH_SIZE
+    batch_size = 500 if config.email_only else settings.BATCH_SIZE
     state.total_batches = (len(recipients) + batch_size - 1) // batch_size
 
     logger.info(
@@ -131,7 +144,6 @@ async def run_campaign(
         len(recipients), state.total_batches, config.test_mode,
     )
 
-    # If test mode, override all emails to admin
     if config.test_mode:
         for r in recipients:
             r.email = settings.ADMIN_EMAIL
@@ -147,22 +159,23 @@ async def run_campaign(
             end = min(start + batch_size, len(recipients))
             batch = recipients[start:end]
 
-            # Generate PDFs for this batch
             batch_data = []
             for r in batch:
                 if state.should_stop:
                     break
                 state.current_name = r.name
-                logger.debug("Generating PDF for: %s", r.name)
-                pdf_bytes = generate_certificate_pdf(
-                    template_bytes=template_bytes,
-                    name=r.name,
-                    x_percent=config.x_percent,
-                    y_percent=config.y_percent,
-                    font_size=config.font_size,
-                    font_color=config.font_color,
-                    text_align=config.text_align,
-                )
+                if config.email_only:
+                    pdf_bytes = None
+                else:
+                    pdf_bytes = generate_certificate_pdf(
+                        template_bytes=template_bytes,
+                        name=r.name,
+                        x_percent=config.x_percent,
+                        y_percent=config.y_percent,
+                        font_size=config.font_size,
+                        font_color=config.font_color,
+                        text_align=config.text_align,
+                    )
                 batch_data.append(
                     {"name": r.name, "email": r.email, "pdf_bytes": pdf_bytes}
                 )
@@ -171,17 +184,17 @@ async def run_campaign(
                 state.status = "stopped"
                 break
 
-            # Send batch and tally results in real-time
             batch_sent = 0
             batch_failed = 0
             async for r in send_batch(
                 token=settings.ZEPTOMAIL_TOKEN,
                 sender_email=settings.SENDER_EMAIL,
-                sender_name=settings.SENDER_NAME,
+                sender_name=sender_name,
                 recipients=batch_data,
                 subject=config.email_subject,
                 body=config.email_body,
                 is_html=config.is_html,
+                is_newsletter=config.email_only,
             ):
                 if r["success"]:
                     state.sent += 1
@@ -196,42 +209,33 @@ async def run_campaign(
                             "error": r["error"],
                         }
                     )
-                    logger.warning("Failed to send to %s <%s>: %s", r["name"], r["email"], r["error"])
 
-            logger.info(
-                "Batch %d/%d complete: %d sent, %d failed",
-                state.current_batch, state.total_batches, batch_sent, batch_failed,
-            )
+            logger.info("Batch %d/%d complete: %d sent, %d failed", state.current_batch, state.total_batches, batch_sent, batch_failed)
             
-            # Save progress so it survives a crash
-            store.save_progress(config.start_index + state.sent + state.failed)
+            # Sync progress to DB if campaign_id is provided
+            if campaign_id:
+                try:
+                    with db_cursor() as cursor:
+                        cursor.execute(
+                            "UPDATE campaigns SET last_sent_count = ? WHERE id = ?",
+                            (config.start_index + state.sent + state.failed, campaign_id)
+                        )
+                except Exception as e:
+                    logger.error("Failed to sync progress to DB: %s", e)
 
-            # Rate limiter: sleep between batches
             if batch_idx < state.total_batches - 1 and not state.should_stop:
                 await asyncio.sleep(settings.BATCH_DELAY_SECONDS)
 
         if not state.should_stop:
             state.status = "completed"
-            store.save_progress(0)  # Reset disk progress on complete
-            logger.info("Campaign completed: %d sent, %d failed", state.sent, state.failed)
         else:
-            logger.info("Campaign stopped by user: %d sent, %d failed", state.sent, state.failed)
+            state.status = "stopped"
 
     except Exception as e:
         state.status = "error"
+        state.error = str(e)
         state.current_name = f"Error: {str(e)}"
         logger.error("Campaign error: %s", e, exc_info=True)
 
     finally:
-        # Save to persistent history
-        if state.status in ("completed", "stopped", "error"):
-            store.add_history_record({
-                "id": str(uuid.uuid4()),
-                "timestamp": datetime.now().isoformat(),
-                "subject": config.email_subject,
-                "total_sent": state.sent,
-                "total_failed": state.failed,
-                "status": state.status,
-            })
-            
         state.is_running = False

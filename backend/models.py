@@ -1,5 +1,6 @@
 from pydantic import BaseModel
-from typing import Optional, Literal
+from typing import Optional, Literal, List
+from datetime import datetime
 
 
 class CampaignConfig(BaseModel):
@@ -14,6 +15,7 @@ class CampaignConfig(BaseModel):
     is_html: bool = False
     test_mode: bool = False
     start_index: int = 0      # Skip this many recipients
+    email_only: bool = False  # Skip PDF generation and send plain/html email
 
 
 class ProgressUpdate(BaseModel):
@@ -51,3 +53,37 @@ class CampaignHistoryRecord(BaseModel):
     total_sent: int
     total_failed: int
     status: str
+
+class User(BaseModel):
+    id: str
+    username: str
+    role: Literal["admin", "worker"]
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Literal["admin", "worker"] = "worker"
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: User
+
+class CampaignMetadata(BaseModel):
+    id: str
+    creator_id: str
+    status: Literal["pending", "approved", "running", "completed", "error", "stopped"]
+    config: CampaignConfig
+    created_at: float
+    total_count: int
+    last_sent_count: int
+
+class AppSettings(BaseModel):
+    sender_name: str
+
+class SettingsUpdate(BaseModel):
+    sender_name: str

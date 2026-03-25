@@ -1,139 +1,128 @@
-"""
-Campaign Router — Start, stop, and download failed sends.
-"""
-
 import asyncio
-from fastapi import APIRouter, HTTPException
+import uuid
+import json
+import time
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 import io
 
-from models import CampaignConfig, Recipient
+from models import CampaignConfig, Recipient, User, CampaignMetadata
 from store import store
+from auth import get_current_user, require_admin
+from database import db_cursor, get_connection
 from services.campaign_runner import campaign_state, run_campaign
 
 router = APIRouter(prefix="/api/campaign", tags=["campaign"])
 
-
-@router.post("/start")
-async def start_campaign(config: CampaignConfig):
-    """Launch the certificate email campaign as a background task."""
-    if campaign_state.is_running:
-        raise HTTPException(
-            status_code=409, detail="A campaign is already running"
-        )
-
-    if not store.template_bytes:
-        raise HTTPException(
-            status_code=400, detail="No template uploaded yet"
-        )
-
-    if not store.recipients:
+@router.post("/submit")
+async def submit_campaign(config: CampaignConfig, user: User = Depends(get_current_user)):
+    """Worker submits a campaign for admin approval."""
+    template_bytes, recipients = store.get_draft_data(user.id)
+    
+    if not config.email_only and not template_bytes:
+        raise HTTPException(status_code=400, detail="No template uploaded yet")
+    if not recipients:
         raise HTTPException(status_code=400, detail="No CSV uploaded yet")
 
-    # Copy recipients so the campaign can modify them (test mode)
-    recipients_copy = [
-        Recipient(name=r.name, email=r.email) for r in store.recipients
-    ][config.start_index:]
-
-    # Launch as asyncio task (not blocking the response)
-    asyncio.create_task(
-        run_campaign(
-            recipients=recipients_copy,
-            template_bytes=store.template_bytes,
-            config=config,
+    campaign_id = str(uuid.uuid4())
+    
+    # Save campaign metadata to DB
+    with db_cursor() as cursor:
+        cursor.execute(
+            """INSERT INTO campaigns (id, creator_id, status, config, created_at, total_count)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (campaign_id, user.id, "pending", config.model_dump_json(), time.time(), len(recipients))
         )
+    
+    # Promote files from draft to persistent campaign storage
+    store.promote_draft_to_campaign(user.id, campaign_id)
+    
+    return {"message": "Campaign submitted for approval", "campaign_id": campaign_id}
+
+@router.get("/pending", response_model=list[CampaignMetadata])
+async def list_pending_campaigns(admin: User = Depends(require_admin)):
+    """Admin lists all campaigns awaiting approval."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM campaigns WHERE status = 'pending' ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    result = []
+    for r in rows:
+        result.append(CampaignMetadata(
+            id=r["id"],
+            creator_id=r["creator_id"],
+            status=r["status"],
+            config=CampaignConfig.model_validate_json(r["config"]),
+            created_at=r["created_at"],
+            total_count=r["total_count"],
+            last_sent_count=r["last_sent_count"]
+        ))
+    return result
+
+@router.post("/approve/{campaign_id}")
+async def approve_campaign(campaign_id: str, admin: User = Depends(require_admin)):
+    """Admin approves and starts a campaign."""
+    if campaign_state.is_running:
+        raise HTTPException(status_code=409, detail="Another campaign is already running")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM campaigns WHERE id = ? AND status = 'pending'", (campaign_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        raise HTTPException(status_code=404, detail="Pending campaign not found")
+
+    config = CampaignConfig.model_validate_json(row["config"])
+    template_bytes, recipients = store.get_campaign_data(campaign_id)
+    
+    # Update status to approved/running
+    with db_cursor() as cursor:
+        cursor.execute("UPDATE campaigns SET status = 'running' WHERE id = ?", (campaign_id,))
+
+    # Launch campaign
+    asyncio.create_task(
+        run_campaign_wrapper(campaign_id, recipients, template_bytes, config)
     )
 
-    return {
-        "message": f"Campaign started for {len(recipients_copy)} recipients",
-        "total": len(recipients_copy),
-        "test_mode": config.test_mode,
-    }
+    return {"message": "Campaign approved and started"}
 
+async def run_campaign_wrapper(campaign_id, recipients, template_bytes, config):
+    """Wrapper to update DB status after campaign completes."""
+    try:
+        await run_campaign(recipients, template_bytes, config)
+        final_status = "completed" if not campaign_state.should_stop else "stopped"
+        if campaign_state.error:
+            final_status = "error"
+    except Exception:
+        final_status = "error"
+        
+    with db_cursor() as cursor:
+        cursor.execute(
+            "UPDATE campaigns SET status = ?, last_sent_count = ? WHERE id = ?",
+            (final_status, campaign_state.sent, campaign_id)
+        )
 
 @router.post("/stop")
-async def stop_campaign():
-    """Signal the running campaign to stop after the current batch."""
+async def stop_campaign(user: User = Depends(get_current_user)):
+    """Signal the running campaign to stop."""
     if not campaign_state.is_running:
-        raise HTTPException(
-            status_code=400, detail="No campaign is currently running"
-        )
-
+        raise HTTPException(status_code=400, detail="No campaign is currently running")
+    
     campaign_state.should_stop = True
-    return {"message": "Stop signal sent. Campaign will halt after current batch."}
-
+    return {"message": "Stop signal sent"}
 
 @router.get("/failed-csv")
-async def download_failed_csv():
-    """Download the Failed_Sends.csv for the last campaign."""
+async def download_failed_csv(user: User = Depends(get_current_user)):
     if campaign_state.is_running:
-        raise HTTPException(
-            status_code=400,
-            detail="Campaign is still running. Wait for completion.",
-        )
-
+        raise HTTPException(status_code=400, detail="Campaign is still running")
+    
     csv_bytes = campaign_state.get_failed_csv_bytes()
     return StreamingResponse(
         io.BytesIO(csv_bytes),
         media_type="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=Failed_Sends.csv"
-        },
+        headers={"Content-Disposition": "attachment; filename=Failed_Sends.csv"},
     )
-
-
-@router.get("/progress")
-async def get_progress():
-    """Poll-based progress endpoint (alternative to WebSocket)."""
-    return campaign_state.get_progress().model_dump()
-
-
-@router.post("/test-single")
-async def send_quick_test(config: CampaignConfig):
-    """Bypasses campaign queue to send a single immediate test email to the Admin."""
-    if not store.template_bytes:
-        raise HTTPException(
-            status_code=400, detail="No template uploaded yet"
-        )
-        
-    from config import get_settings
-    from services.pdf_engine import generate_certificate_pdf
-    from services.mailer import send_single_email
-    settings = get_settings()
-
-    test_name = "Quick Test User"
-    
-    try:
-        # Generate single PDF
-        pdf_bytes = generate_certificate_pdf(
-            template_bytes=store.template_bytes,
-            name=test_name,
-            x_percent=config.x_percent,
-            y_percent=config.y_percent,
-            font_size=config.font_size,
-            font_color=config.font_color,
-            text_align=config.text_align,
-        )
-        
-        # Send single email
-        success, error = await send_single_email(
-            token=settings.ZEPTOMAIL_TOKEN,
-            sender_email=settings.SENDER_EMAIL,
-            sender_name=settings.SENDER_NAME,
-            recipient_email=settings.ADMIN_EMAIL,
-            recipient_name=test_name,
-            subject=f"[TEST] {config.email_subject}",
-            body=config.email_body,
-            pdf_bytes=pdf_bytes,
-            filename="Test_Certificate.pdf",
-            is_html=config.is_html,
-        )
-        
-        if not success:
-            raise HTTPException(status_code=500, detail=f"Failed to send test email: {error}")
-            
-        return {"message": f"Test email sent successfully to {settings.ADMIN_EMAIL}!"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
