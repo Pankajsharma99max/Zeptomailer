@@ -58,7 +58,7 @@ async def send_single_email(
         ]
 
     headers = {
-        "Authorization": f"Zoho-enczapikey {token}",
+        "Authorization": f"Zoho-enczapikey {token.strip()}",
         "Content-Type": "application/json",
         "Accept": "application/json",
     }

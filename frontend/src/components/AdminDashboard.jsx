@@ -1,5 +1,4 @@
-import { useState, useEffect } from 'react';
-import { fetchUsers, createUser, deleteUser, fetchPendingCampaigns, approveCampaign } from '../lib/api';
+import { fetchUsers, createUser, deleteUser, fetchPendingCampaigns, approveCampaign, rejectCampaign } from '../lib/api';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState([]);
@@ -9,6 +8,7 @@ export default function AdminDashboard() {
   const [newRole, setNewRole] = useState('worker');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [approvingId, setApprovingId] = useState(null);
 
   useEffect(() => {
     loadData();
@@ -51,12 +51,31 @@ export default function AdminDashboard() {
   };
 
   const handleApprove = async (campaignId) => {
+    if (approvingId) return;
+    setApprovingId(campaignId);
     try {
       await approveCampaign(campaignId);
       loadData();
       alert('Campaign approved and started!');
     } catch (err) {
+      if (!err.message.includes('already running')) {
+        setError(err.message);
+      }
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleReject = async (campaignId) => {
+    if (!confirm('Are you sure you want to reject this campaign?')) return;
+    setLoading(true);
+    try {
+      await rejectCampaign(campaignId);
+      loadData();
+    } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -142,22 +161,46 @@ export default function AdminDashboard() {
                     <div>
                       <p className="font-bold text-white">{camp.config.email_subject}</p>
                       <p className="text-xs text-gray-400 italic">By User {camp.creator_id.split('-')[0]} • {new Date(camp.created_at * 1000).toLocaleString()}</p>
-                    </div>
-                    <span className="px-2 py-1 bg-amber-500/10 text-amber-500 text-[10px] font-bold uppercase rounded border border-amber-500/20">Pending</span>
+                    </div>                    <span className={`px-2 py-1 text-[10px] font-bold uppercase rounded border ${
+                      camp.status === 'error' ? 'bg-rose-500/10 text-rose-500 border-rose-500/20' : 
+                      camp.status === 'stopped' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :
+                      'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
+                    }`}>
+                      {camp.status}
+                    </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                    <div className="bg-black/20 p-2 rounded">Rows: <span className="text-white">{camp.total_count}</span></div>
-                    <div className="bg-black/20 p-2 rounded">Mode: <span className="text-white">{camp.config.email_only ? 'Email Only' : 'Certificates'}</span></div>
+                    <div className="bg-black/20 p-2 rounded">Total Rows: <span className="text-white">{camp.total_count}</span></div>
+                    <div className="bg-black/20 p-2 rounded">Processed: <span className="text-white">{camp.last_sent_count}</span></div>
+                    <div className="bg-black/20 p-2 rounded">Sent: <span className="text-emerald-400 font-bold">{camp.successful_count}</span></div>
+                    <div className="bg-black/20 p-2 rounded">Failed: <span className="text-rose-400 font-bold">{camp.failed_count}</span></div>
+                    {camp.config.start_index > 0 && (
+                      <div className="bg-amber-500/10 p-2 rounded col-span-2 border border-amber-500/20 text-amber-500">
+                        Resuming from row: <span className="font-bold">{camp.config.start_index}</span>
+                      </div>
+                    )}
+                    <div className="bg-black/20 p-2 rounded col-span-2">Mode: <span className="text-white">{camp.config.email_only ? 'Email Only' : 'Certificates'}</span></div>
                   </div>
-                  <button
-                    onClick={() => handleApprove(camp.id)}
-                    className="btn-primary w-full py-2 text-xs flex items-center justify-center gap-2"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Approve & Start Sending
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleApprove(camp.id)}
+                      disabled={approvingId === camp.id || loading}
+                      className="btn-primary flex-1 py-2 text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      {approvingId === camp.id ? 'Starting...' : (['error', 'stopped'].includes(camp.status) ? 'Resume' : 'Approve')}
+                    </button>
+                    <button
+                      onClick={() => handleReject(camp.id)}
+                      disabled={approvingId === camp.id || loading}
+                      className="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-lg border border-rose-500/20 text-xs font-bold transition-all disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                  </div>
+
                 </div>
               ))
             )}

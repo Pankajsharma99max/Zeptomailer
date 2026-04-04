@@ -2,7 +2,7 @@ import secrets
 import string
 import time
 import bcrypt
-from fastapi import Header, HTTPException, status, Depends
+from fastapi import Header, HTTPException, status, Depends, Query
 from models import User
 from database import get_connection
 
@@ -22,15 +22,20 @@ def generate_token() -> str:
     alphabet = string.ascii_letters + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(64))
 
-def get_current_user(authorization: str = Header(None)) -> User:
+def get_current_user(authorization: str = Header(None), token: str = Query(None)) -> User:
     """Dependency to verify the bearer token."""
-    if not authorization or not authorization.startswith("Bearer "):
+    actual_token = None
+    
+    if authorization and authorization.startswith("Bearer "):
+        actual_token = authorization.split(" ")[1]
+    elif token:
+        actual_token = token
+        
+    if not actual_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid authentication token"
         )
-    
-    token = authorization.split(" ")[1]
     
     conn = get_connection()
     cursor = conn.cursor()
@@ -43,7 +48,7 @@ def get_current_user(authorization: str = Header(None)) -> User:
         SELECT u.id, u.username, u.role 
         FROM sessions s JOIN users u ON s.user_id = u.id 
         WHERE s.token = ?
-    """, (token,))
+    """, (actual_token,))
     
     row = cursor.fetchone()
     conn.close()

@@ -66,6 +66,8 @@ def init_db():
                 created_at REAL NOT NULL,
                 total_count INTEGER DEFAULT 0,
                 last_sent_count INTEGER DEFAULT 0,
+                successful_count INTEGER DEFAULT 0,
+                failed_count INTEGER DEFAULT 0,
                 FOREIGN KEY(creator_id) REFERENCES users(id)
             )
         """)
@@ -84,6 +86,16 @@ def init_db():
     with db_cursor() as cursor:
         cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES (?, ?)", ("sender_name", settings.SENDER_NAME))
 
+        # DB Migration: Add columns if they do not exist
+        try:
+            cursor.execute("ALTER TABLE campaigns ADD COLUMN successful_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass # Already exists
+            
+        try:
+            cursor.execute("ALTER TABLE campaigns ADD COLUMN failed_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass # Already exists
     logger.info("Database initialized.")
 
 # Call init_db on module import to ensure tables exist

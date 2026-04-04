@@ -19,7 +19,7 @@ from models import CampaignConfig, ProgressUpdate, Recipient
 from services.pdf_engine import generate_certificate_pdf
 from services.mailer import send_batch
 from store import store
-from database import db_cursor
+from database import db_cursor, get_connection
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class CampaignState:
     def reset(self):
         self.is_running: bool = False
         self.should_stop: bool = False
+        self.is_paused: bool = False
         self.total: int = 0
         self.sent: int = 0
         self.failed: int = 0
@@ -84,22 +85,32 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
     try:
         text = csv_bytes.decode("utf-8-sig")  # Handle BOM
     except UnicodeDecodeError:
-        text = csv_bytes.decode("cp1252")     # Fallback for Excel/Windows-1252
-        
+        try:
+            text = csv_bytes.decode("cp1252")     # Fallback for Excel/Windows-1252
+        except UnicodeDecodeError:
+            text = csv_bytes.decode("latin-1")   # Last resort
+
     reader = csv.DictReader(io.StringIO(text))
 
     # Normalize column headers (case-insensitive)
     recipients = []
+    skipped_count = 0
+    total_rows = 0
+    
     for row in reader:
+        total_rows += 1
         # Try to find name and email columns (case-insensitive)
-        normalized = {k.strip().lower(): v.strip() for k, v in row.items()}
+        normalized = {k.strip().lower(): v.strip() for k, v in row.items() if k}
         name = normalized.get("name", "")
-        email = normalized.get("email", "")
+        email = normalized.get("email", "").lower()
         
-        # Skip if email is missing, empty, or '0'
-        if name and email and email != "0":
+        # Skip if email is missing, empty, or '0' or doesn't look like an email
+        if name and email and email != "0" and "@" in email:
             recipients.append(Recipient(name=name, email=email))
+        else:
+            skipped_count += 1
 
+    logger.info("CSV parsed: %d/%d rows accepted (%d skipped)", len(recipients), total_rows, skipped_count)
     return recipients
 
 
@@ -108,6 +119,7 @@ async def run_campaign(
     template_bytes: bytes,
     config: CampaignConfig,
     campaign_id: Optional[str] = None,
+    is_retry_failed: bool = False,
 ):
     """
     Execute the full certificate email campaign.
@@ -117,8 +129,10 @@ async def run_campaign(
 
     state.reset()
     
-    # Fetch dynamic sender_name from DB, fallback to .env settings
+    # Fetch dynamic sender_name and initial campaign counts from DB
     sender_name = settings.SENDER_NAME
+    initial_sent = 0
+    initial_failed = 0
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -126,18 +140,28 @@ async def run_campaign(
         row = cursor.fetchone()
         if row:
             sender_name = row["value"]
+            
+        if campaign_id:
+            cursor.execute("SELECT successful_count, failed_count FROM campaigns WHERE id = ?", (campaign_id,))
+            camp_row = cursor.fetchone()
+            if camp_row:
+                initial_sent = camp_row["successful_count"] or 0
+                initial_failed = 0 if is_retry_failed else (camp_row["failed_count"] or 0)
         conn.close()
     except Exception as e:
-        logger.error("Failed to fetch sender_name from DB: %s", e)
+        logger.error("Failed to fetch initial data from DB: %s", e)
 
     state.is_running = True
     state.status = "running"
     state.total = len(recipients)
+    state.sent = 0  # Re-initialize to 0 for the *current* session
     state.start_time = time.time()
     state.subject = config.email_subject
 
+    # Slice recipients list to start from the given index
+    current_recipients = recipients[config.start_index:]
     batch_size = 500 if config.email_only else settings.BATCH_SIZE
-    state.total_batches = (len(recipients) + batch_size - 1) // batch_size
+    state.total_batches = (len(current_recipients) + batch_size - 1) // batch_size
 
     logger.info(
         "Campaign started: %d recipients, %d batches, test_mode=%s",
@@ -150,14 +174,20 @@ async def run_campaign(
 
     try:
         for batch_idx in range(state.total_batches):
+            while state.is_paused and not state.should_stop:
+                state.status = "paused"
+                await asyncio.sleep(1)
+
             if state.should_stop:
                 state.status = "stopped"
                 break
+                
+            state.status = "running"
 
             state.current_batch = batch_idx + 1
             start = batch_idx * batch_size
-            end = min(start + batch_size, len(recipients))
-            batch = recipients[start:end]
+            end = min(start + batch_size, len(current_recipients))
+            batch = current_recipients[start:end]
 
             batch_data = []
             for r in batch:
@@ -217,8 +247,8 @@ async def run_campaign(
                 try:
                     with db_cursor() as cursor:
                         cursor.execute(
-                            "UPDATE campaigns SET last_sent_count = ? WHERE id = ?",
-                            (config.start_index + state.sent + state.failed, campaign_id)
+                            "UPDATE campaigns SET last_sent_count = ?, successful_count = ?, failed_count = ? WHERE id = ?",
+                            (config.start_index + state.sent + state.failed, initial_sent + state.sent, initial_failed + state.failed, campaign_id)
                         )
                 except Exception as e:
                     logger.error("Failed to sync progress to DB: %s", e)
@@ -239,3 +269,19 @@ async def run_campaign(
 
     finally:
         state.is_running = False
+        if campaign_id:
+            # Persist failed recipients to disk
+            if state.failed_list:
+                try:
+                    store.save_campaign_failed_recipients(campaign_id, state.failed_list)
+                except Exception as e:
+                    logger.error("Failed to save failed recipients to disk: %s", e)
+
+            try:
+                with db_cursor() as cursor:
+                    cursor.execute(
+                        "UPDATE campaigns SET status = ?, last_sent_count = ?, successful_count = ?, failed_count = ? WHERE id = ?",
+                        (state.status, config.start_index + state.sent + state.failed, initial_sent + state.sent, initial_failed + state.failed, campaign_id)
+                    )
+            except Exception as e:
+                logger.error("Failed to sync final DB status: %s", e)

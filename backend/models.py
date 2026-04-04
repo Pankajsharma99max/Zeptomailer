@@ -76,11 +76,13 @@ class TokenResponse(BaseModel):
 class CampaignMetadata(BaseModel):
     id: str
     creator_id: str
-    status: Literal["pending", "approved", "running", "completed", "error", "stopped"]
+    status: Literal["pending", "approved", "running", "completed", "error", "stopped", "rejected"]
     config: CampaignConfig
     created_at: float
     total_count: int
     last_sent_count: int
+    successful_count: int = 0
+    failed_count: int = 0
 
 class AppSettings(BaseModel):
     sender_name: str

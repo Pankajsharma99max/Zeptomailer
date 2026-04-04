@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { fetchHistory, clearHistory } from '../lib/api';
+import { fetchHistory, clearHistory, deleteHistoryItem, approveCampaign, retryFailedCampaign } from '../lib/api';
 
 export default function CampaignHistory() {
   const [history, setHistory] = useState([]);
@@ -48,6 +48,45 @@ export default function CampaignHistory() {
         setHistory([]);
       } catch (err) {
         console.error("Failed to clear history:", err);
+      }
+    }
+  };
+
+  const handleDeleteRow = async (id) => {
+    if (window.confirm("Are you sure you want to delete this specific campaign from history?")) {
+      try {
+        await deleteHistoryItem(id);
+        setHistory(prev => prev.filter(r => r.id !== id));
+      } catch (err) {
+        console.error("Failed to delete history item:", err);
+      }
+    }
+  };
+
+  const handleResume = async (id) => {
+    try {
+      setLoading(true);
+      await approveCampaign(id);
+      alert("Campaign resumption started!");
+      loadHistory();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRetryFailed = async (id) => {
+    if (window.confirm("This will retry sending certificates ONLY to the recipients that failed in previous attempts. Continue?")) {
+      try {
+        setLoading(true);
+        await retryFailedCampaign(id);
+        alert("Retry for failed recipients has been started!");
+        loadHistory();
+      } catch (err) {
+        alert(err.message);
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -117,6 +156,7 @@ export default function CampaignHistory() {
               <th className="px-5 py-4">Subject line</th>
               <th className="px-5 py-4">Status</th>
               <th className="px-5 py-4 w-48 text-right">Delivery Ratio</th>
+              <th className="px-4 py-4 w-12"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-gray-300 font-medium">
@@ -129,7 +169,13 @@ export default function CampaignHistory() {
                     {new Date(record.timestamp).toLocaleString()}
                   </td>
                   <td className="px-5 py-4 truncate max-w-[200px]" title={record.subject}>
-                    {record.subject}
+                    <div className="font-medium">{record.subject}</div>
+                    {record.start_index > 0 && (
+                      <div className="text-[10px] text-amber-400 mt-1 font-bold flex items-center gap-1 uppercase tracking-tighter bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 w-fit">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" /></svg>
+                        Resumed from row {record.start_index}
+                      </div>
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -143,14 +189,48 @@ export default function CampaignHistory() {
                   <td className="px-5 py-4">
                     <div className="flex flex-col gap-1.5 items-end">
                       <div className="flex items-center gap-3 text-xs">
-                        <span className="text-emerald-400">{record.total_sent} sent</span>
+                        <span className="text-emerald-400 font-bold">{record.total_sent} sent</span>
                         <span className="text-gray-600">|</span>
-                        <span className="text-rose-400">{record.total_failed} failed</span>
+                        <span className="text-rose-400 font-bold">{record.total_failed} failed</span>
+                        {record.start_index > 0 && <span className="text-[10px] text-gray-500 italic">(Total)</span>}
                       </div>
                       <div className="w-full max-w-[140px] bg-gray-800 rounded-full h-1.5 overflow-hidden flex">
                         <div className="bg-emerald-500 h-full" style={{ width: `${rowSuccessRate}%` }}></div>
                         <div className="bg-rose-500 h-full flex-1"></div>
                       </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {['stopped', 'error'].includes(record.status) && (
+                        <button 
+                          onClick={() => handleResume(record.id)} 
+                          className="text-amber-400 hover:text-amber-300 p-2 rounded-lg hover:bg-amber-500/10 transition-colors" 
+                          title="Resume Campaign"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          </svg>
+                        </button>
+                      )}
+                      {record.total_failed > 0 && record.status !== 'running' && (
+                        <button 
+                          onClick={() => handleRetryFailed(record.id)} 
+                          className="text-brand-400 hover:text-brand-300 p-2 rounded-lg hover:bg-brand-500/10 transition-colors" 
+                          title="Retry Failed Recipients"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                        </button>
+                      )}
+                      {record.status !== 'running' && (
+                        <button onClick={() => handleDeleteRow(record.id)} className="text-gray-500 hover:text-rose-400 p-2 rounded-lg hover:bg-rose-500/10 transition-colors" title="Delete record">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

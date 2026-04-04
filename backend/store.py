@@ -144,5 +144,22 @@ class Store:
 
         return template_bytes, recipients
 
+    def save_campaign_failed_recipients(self, campaign_id: str, failed_list: List[dict]):
+        """Save failed recipients to a JSON file in the campaign directory."""
+        camp_dir = self.get_campaign_dir(campaign_id)
+        path = os.path.join(camp_dir, "failed_recipients.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(failed_list, f)
+        logger.info(f"Saved {len(failed_list)} failed recipients for campaign {campaign_id}")
+
+    def get_campaign_failed_recipients(self, campaign_id: str) -> List[Recipient]:
+        """Load failed recipients from the campaign directory."""
+        camp_dir = self.get_campaign_dir(campaign_id)
+        path = os.path.join(camp_dir, "failed_recipients.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return [Recipient(name=r["name"], email=r["email"]) for r in data]
+        return []
 
 store = Store()

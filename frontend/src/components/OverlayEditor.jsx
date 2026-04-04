@@ -129,6 +129,10 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
               alt="Certificate template"
               className="w-full h-auto block"
               draggable={false}
+              onError={() => {
+                setError('Failed to load template image. Your session may have expired. Please try uploading the template again or log out and back in.');
+                setTemplateUrl(null);
+              }}
             />
             {/* Draggable name overlay */}
             <div
@@ -142,7 +146,7 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
               style={{
                 left: `${coords.x_percent}%`,
                 top: `${coords.y_percent}%`,
-                fontSize: `${Math.max(12, fontSize * 0.4)}px`,
+                fontSize: templateInfo ? `${(fontSize * (containerRef.current?.getBoundingClientRect().width || 0)) / templateInfo.width}px` : `${fontSize * 0.4}px`,
                 color: fontColor,
                 transform: textAlign === 'left' ? 'translateY(-50%)'
                   : textAlign === 'right' ? 'translate(-100%, -50%)'
@@ -164,8 +168,8 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
               <label className="label-text">Font Size: {fontSize}px</label>
               <input
                 type="range"
-                min="16"
-                max="120"
+                min="10"
+                max={templateInfo ? Math.round(templateInfo.width / 5) : 500}
                 value={fontSize}
                 onChange={(e) => onFontSizeChange(Number(e.target.value))}
                 className="w-full h-2 rounded-full bg-gray-700 appearance-none cursor-pointer accent-brand-500"

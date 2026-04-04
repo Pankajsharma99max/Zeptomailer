@@ -110,6 +110,22 @@ export async function approveCampaign(campaignId) {
   return handleResponse(res);
 }
 
+export async function rejectCampaign(campaignId) {
+  const res = await fetch(`${API_BASE}/api/campaign/reject/${campaignId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
+}
+
+export async function retryFailedCampaign(campaignId) {
+  const res = await fetch(`${API_BASE}/api/campaign/retry-failed/${campaignId}`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
+}
+
 export async function sendQuickTest(config) {
   const res = await fetch(`${API_BASE}/api/campaign/test-single`, {
     method: 'POST',
@@ -121,6 +137,22 @@ export async function sendQuickTest(config) {
 
 export async function stopCampaign() {
   const res = await fetch(`${API_BASE}/api/campaign/stop`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
+}
+
+export async function pauseCampaign() {
+  const res = await fetch(`${API_BASE}/api/campaign/pause`, {
+    method: 'POST',
+    headers: getHeaders(),
+  });
+  return handleResponse(res);
+}
+
+export async function resumeCampaign() {
+  const res = await fetch(`${API_BASE}/api/campaign/resume`, {
     method: 'POST',
     headers: getHeaders(),
   });
@@ -155,6 +187,13 @@ export async function clearHistory() {
   return handleResponse(res);
 }
 
+export async function deleteHistoryItem(id) {
+  const res = await fetch(`${API_BASE}/api/status/history/${id}`, {
+    method: 'DELETE',
+    headers: getHeaders()
+  });
+  return handleResponse(res);
+}
 export function getTemplateImageUrl() {
   const token = localStorage.getItem('auth_token') || '';
   return `${API_BASE}/api/upload/template-image?token=${token}`;

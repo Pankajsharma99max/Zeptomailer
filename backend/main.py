@@ -41,11 +41,15 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-
-# CORS — avoid wildcard in production
+# CORS — allow development and production origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_ORIGIN] if settings.FRONTEND_ORIGIN != "*" else ["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=[
+        settings.FRONTEND_ORIGIN,
+        "http://devnovate.co:9000",
+        "http://localhost:5173",
+        "http://localhost:3000"
+    ] if settings.FRONTEND_ORIGIN != "*" else ["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,12 +63,10 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Basic CSP - allow self and some fonts
-    # Note: In production, refine this to your specific needs
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:;"
+    # Basic CSP - allow self, fonts, and images
+    # Added Google Fonts support: https://fonts.googleapis.com and https://fonts.gstatic.com
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:;"
     return response
-
-
 
 # Include API routers
 app.include_router(auth.router)
@@ -120,7 +122,14 @@ if os.path.isdir(STATIC_DIR):
     # Serve other static files (favicon, vite.svg, etc.)
     @app.get("/vite.svg")
     async def vite_svg():
-        return FileResponse(os.path.join(STATIC_DIR, "vite.svg"))
+        vite_path = os.path.join(STATIC_DIR, "vite.svg")
+        if os.path.exists(vite_path):
+            return FileResponse(vite_path)
+        # Fallback to favicon.svg if vite.svg is missing to prevent 500 Internal Server Error
+        fallback = os.path.join(STATIC_DIR, "favicon.svg")
+        if os.path.exists(fallback):
+            return FileResponse(fallback)
+        return {"detail": "SVG not found"}
 
     # Catch-all: serve index.html for any non-API, non-WS route
     # This enables client-side routing (React Router, etc.)

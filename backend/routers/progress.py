@@ -13,11 +13,12 @@ router = APIRouter(tags=["progress"])
 
 
 @router.websocket("/ws/progress")
-async def websocket_progress(websocket: WebSocket, token: str = None):
+async def websocket_progress(websocket: WebSocket):
     """
     WebSocket endpoint that pushes progress updates every second
     while a campaign is active.
     """
+    token = websocket.query_params.get("token")
     await websocket.accept()
 
     # Authentication via token
