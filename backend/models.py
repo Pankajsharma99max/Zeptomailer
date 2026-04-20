@@ -9,6 +9,8 @@ class CampaignConfig(BaseModel):
     y_percent: float          # Name Y position as % of image height
     font_size: int = 48       # Font size in pixels
     font_color: str = "#000000"
+    is_bold: bool = False
+    font_family: str = "Roboto"
     text_align: Literal["left", "center", "right"] = "center"
     email_subject: str = "Your Certificate"
     email_body: str = "Please find your certificate attached."
@@ -16,6 +18,7 @@ class CampaignConfig(BaseModel):
     test_mode: bool = False
     start_index: int = 0      # Skip this many recipients
     email_only: bool = False  # Skip PDF generation and send plain/html email
+    placeholder_pages: List[bool] = [] # Pages that should have the placeholder
 
 
 class ProgressUpdate(BaseModel):
@@ -36,6 +39,8 @@ class PreviewRequest(BaseModel):
     y_percent: float
     font_size: int = 48
     font_color: str = "#000000"
+    is_bold: bool = False
+    font_family: str = "Roboto"
     text_align: str = "center"
     sample_count: int = 5
 

@@ -19,9 +19,23 @@ export default function CampaignHistory() {
   useEffect(() => {
     loadHistory();
     // Poll to keep table updated
-    const interval = setInterval(loadHistory, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    // Use a dynamic interval: faster when running, slower when idle
+    const getInterval = () => {
+      const hasRunning = history.some(r => r.status === 'running');
+      return hasRunning ? 3000 : 10000;
+    };
+
+    let intervalId = setInterval(loadHistory, 10000);
+
+    // Update interval if status changes
+    const hasRunning = history.some(r => r.status === 'running');
+    if (hasRunning) {
+      clearInterval(intervalId);
+      intervalId = setInterval(loadHistory, 3000);
+    }
+
+    return () => clearInterval(intervalId);
+  }, [history]); // Re-run when history changes to adjust polling speed
 
   if (loading && history.length === 0) {
     return <div className="text-gray-500 animate-pulse text-sm text-center py-4">Loading history...</div>;

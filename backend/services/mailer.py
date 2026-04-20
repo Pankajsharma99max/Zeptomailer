@@ -9,12 +9,22 @@ import asyncio
 import base64
 import logging
 import httpx
+import re
 from typing import List, Dict, Any, Tuple
 
 logger = logging.getLogger(__name__)
 
 ZEPTOMAIL_API_URL = "https://api.zeptomail.com/v1.1/email"
 ZEPTOMAIL_BATCH_URL = "https://api.zeptomail.com/v1.1/email/batch"
+
+
+def replace_merge_tags(text: str, name: str) -> str:
+    """Robustly replace {{name}} tags with actual name (case-insensitive and handles spacing)."""
+    if not text:
+        return text
+    # Matches {{name}}, {{Name}}, {{ name }}, {{  NAME  }}, etc.
+    pattern = re.compile(r'\{\{\s*name\s*\}\}', re.IGNORECASE)
+    return pattern.sub(name, text)
 
 
 async def send_single_email(
@@ -34,6 +44,10 @@ async def send_single_email(
     Send a single email with a PDF attachment via ZeptoMail.
     Returns (success: bool, error_message: str).
     """
+    # Robustly replace merge tags in subject and body
+    final_subject = replace_merge_tags(subject, recipient_name)
+    final_body = replace_merge_tags(body, recipient_name)
+
     payload = {
         "from": {"address": sender_email, "name": sender_name},
         "to": [
@@ -44,8 +58,8 @@ async def send_single_email(
                 }
             }
         ],
-        "subject": subject,
-        "htmlbody": body if is_html else f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.6'>{body.replace(chr(10), '<br>')}</div>",
+        "subject": final_subject,
+        "htmlbody": final_body if is_html else f"<div style='font-family:Arial,sans-serif;font-size:14px;color:#333;line-height:1.6'>{final_body.replace(chr(10), '<br>')}</div>",
     }
 
     if pdf_bytes:

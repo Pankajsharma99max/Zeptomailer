@@ -59,29 +59,48 @@ class Store:
             json.dump(data, f)
         logger.info(f"Saved draft CSV for user {user_id} ({len(recipients)} recipients)")
 
-    def save_draft_template(self, user_id: str, template_bytes: bytes):
+    def save_draft_template(self, user_id: str, template_bytes_list: List[bytes]):
         d = self.get_draft_dir(user_id)
-        with open(os.path.join(d, "template.img"), "wb") as f:
-            f.write(template_bytes)
-        logger.info(f"Saved draft template for user {user_id}")
+        # Clear existing templates
+        for fname in os.listdir(d):
+            if fname.startswith("template") and fname.endswith(".img"):
+                os.remove(os.path.join(d, fname))
+                
+        for i, t_bytes in enumerate(template_bytes_list):
+            with open(os.path.join(d, f"template_{i}.img"), "wb") as f:
+                f.write(t_bytes)
+        logger.info(f"Saved {len(template_bytes_list)} draft templates for user {user_id}")
 
     def get_draft_state(self, user_id: str) -> dict:
         d = self.get_draft_dir(user_id)
+        
+        t_count = 0
+        while os.path.exists(os.path.join(d, f"template_{t_count}.img")):
+            t_count += 1
+            
+        has_old = os.path.exists(os.path.join(d, "template.img"))
+        if t_count == 0 and has_old:
+            t_count = 1
+
         state = {
-            "template_loaded": os.path.exists(os.path.join(d, "template.img")),
+            "template_loaded": t_count > 0,
+            "template_count": t_count,
             "template_size_bytes": 0,
             "csv_loaded": os.path.exists(os.path.join(d, "uploaded.csv")),
             "recipient_count": 0,
             "last_sent_count": 0, # Drafts haven't been sent
             "recipients_sample": []
         }
-        t_path = os.path.join(d, "template.img")
+        
         if state["template_loaded"]:
-            state["template_size_bytes"] = os.path.getsize(t_path)
             try:
                 from PIL import Image
                 import io
-                with open(t_path, "rb") as f:
+                first_path = os.path.join(d, "template_0.img")
+                if not os.path.exists(first_path):
+                    first_path = os.path.join(d, "template.img")
+                state["template_size_bytes"] = os.path.getsize(first_path)
+                with open(first_path, "rb") as f:
                     img = Image.open(io.BytesIO(f.read()))
                     state["template_width"] = img.size[0]
                     state["template_height"] = img.size[1]
@@ -96,13 +115,19 @@ class Store:
                 state["recipients_sample"] = data[:5]
         return state
 
-    def get_draft_data(self, user_id: str) -> Tuple[Optional[bytes], List[Recipient]]:
+    def get_draft_data(self, user_id: str) -> Tuple[List[bytes], List[Recipient]]:
         d = self.get_draft_dir(user_id)
-        template_bytes = None
-        t_path = os.path.join(d, "template.img")
-        if os.path.exists(t_path):
-            with open(t_path, "rb") as f:
-                template_bytes = f.read()
+        template_bytes_list = []
+        
+        i = 0
+        while os.path.exists(os.path.join(d, f"template_{i}.img")):
+            with open(os.path.join(d, f"template_{i}.img"), "rb") as f:
+                template_bytes_list.append(f.read())
+            i += 1
+            
+        if not template_bytes_list and os.path.exists(os.path.join(d, "template.img")):
+            with open(os.path.join(d, "template.img"), "rb") as f:
+                template_bytes_list.append(f.read())
 
         recipients = []
         r_path = os.path.join(d, "recipients.json")
@@ -111,7 +136,7 @@ class Store:
                 data = json.load(f)
                 recipients = [Recipient(name=r["name"], email=r["email"]) for r in data]
 
-        return template_bytes, recipients
+        return template_bytes_list, recipients
 
     def load_from_disk(self):
         """Legacy compatibility method for startup."""
@@ -127,13 +152,19 @@ class Store:
             shutil.copytree(draft_dir, camp_dir, dirs_exist_ok=True)
             logger.info(f"Promoted draft {user_id} -> campaign {campaign_id}")
 
-    def get_campaign_data(self, campaign_id: str) -> Tuple[Optional[bytes], List[Recipient]]:
+    def get_campaign_data(self, campaign_id: str) -> Tuple[List[bytes], List[Recipient]]:
         d = self.get_campaign_dir(campaign_id)
-        template_bytes = None
-        t_path = os.path.join(d, "template.img")
-        if os.path.exists(t_path):
-            with open(t_path, "rb") as f:
-                template_bytes = f.read()
+        template_bytes_list = []
+        
+        i = 0
+        while os.path.exists(os.path.join(d, f"template_{i}.img")):
+            with open(os.path.join(d, f"template_{i}.img"), "rb") as f:
+                template_bytes_list.append(f.read())
+            i += 1
+            
+        if not template_bytes_list and os.path.exists(os.path.join(d, "template.img")):
+            with open(os.path.join(d, "template.img"), "rb") as f:
+                template_bytes_list.append(f.read())
 
         recipients = []
         r_path = os.path.join(d, "recipients.json")
@@ -142,7 +173,7 @@ class Store:
                 data = json.load(f)
                 recipients = [Recipient(name=r["name"], email=r["email"]) for r in data]
 
-        return template_bytes, recipients
+        return template_bytes_list, recipients
 
     def save_campaign_failed_recipients(self, campaign_id: str, failed_list: List[dict]):
         """Save failed recipients to a JSON file in the campaign directory."""

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fetchPreviews } from '../lib/api';
 
-export default function PreviewPanel({ coords, fontSize, fontColor, textAlign }) {
+export default function PreviewPanel({ coords, fontSize, fontColor, textAlign, isBold, fontFamily }) {
   const [previews, setPreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,6 +17,8 @@ export default function PreviewPanel({ coords, fontSize, fontColor, textAlign })
         font_size: fontSize,
         font_color: fontColor,
         text_align: textAlign,
+        is_bold: isBold,
+        font_family: fontFamily,
         sample_count: 5,
       });
       setPreviews(data.previews);

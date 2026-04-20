@@ -101,14 +101,19 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
         total_rows += 1
         # Try to find name and email columns (case-insensitive)
         normalized = {k.strip().lower(): v.strip() for k, v in row.items() if k}
-        name = normalized.get("name", "")
-        email = normalized.get("email", "").lower()
-        
+        name = normalized.get("name", "").strip()
+        email = normalized.get("email", "").lower().strip()
+
         # Skip if email is missing, empty, or '0' or doesn't look like an email
-        if name and email and email != "0" and "@" in email:
-            recipients.append(Recipient(name=name, email=email))
-        else:
+        if not email or email == "0" or "@" not in email:
             skipped_count += 1
+            continue
+
+        # Name is optional — fall back to the local part of the email address
+        if not name:
+            name = email.split("@")[0]
+
+        recipients.append(Recipient(name=name, email=email))
 
     logger.info("CSV parsed: %d/%d rows accepted (%d skipped)", len(recipients), total_rows, skipped_count)
     return recipients
@@ -116,7 +121,7 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
 
 async def run_campaign(
     recipients: List[Recipient],
-    template_bytes: bytes,
+    templates_bytes: List[bytes],
     config: CampaignConfig,
     campaign_id: Optional[str] = None,
     is_retry_failed: bool = False,
@@ -197,14 +202,18 @@ async def run_campaign(
                 if config.email_only:
                     pdf_bytes = None
                 else:
-                    pdf_bytes = generate_certificate_pdf(
-                        template_bytes=template_bytes,
+                    pdf_bytes = await asyncio.to_thread(
+                        generate_certificate_pdf,
+                        templates_bytes=templates_bytes,
                         name=r.name,
                         x_percent=config.x_percent,
                         y_percent=config.y_percent,
                         font_size=config.font_size,
                         font_color=config.font_color,
                         text_align=config.text_align,
+                        is_bold=config.is_bold,
+                        font_family=config.font_family,
+                        placeholder_pages=config.placeholder_pages,
                     )
                 batch_data.append(
                     {"name": r.name, "email": r.email, "pdf_bytes": pdf_bytes}

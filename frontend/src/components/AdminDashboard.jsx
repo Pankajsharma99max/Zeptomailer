@@ -1,6 +1,7 @@
+import { useState, useEffect } from 'react';
 import { fetchUsers, createUser, deleteUser, fetchPendingCampaigns, approveCampaign, rejectCampaign } from '../lib/api';
 
-export default function AdminDashboard() {
+export default function AdminDashboard({ user, setView }) {
   const [users, setUsers] = useState([]);
   const [pendingCampaigns, setPendingCampaigns] = useState([]);
   const [newUsername, setNewUsername] = useState('');
@@ -57,6 +58,7 @@ export default function AdminDashboard() {
       await approveCampaign(campaignId);
       loadData();
       alert('Campaign approved and started!');
+      if (setView) setView('campaign');
     } catch (err) {
       if (!err.message.includes('already running')) {
         setError(err.message);

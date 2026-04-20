@@ -22,9 +22,9 @@ async def preview_certificates(req: PreviewRequest, user: User = Depends(get_cur
     Generate preview certificate images for random names.
     Returns base64-encoded JPEG images.
     """
-    template_bytes, recipients = store.get_draft_data(user.id)
+    template_bytes_list, recipients = store.get_draft_data(user.id)
     
-    if not template_bytes:
+    if not template_bytes_list:
         raise HTTPException(
             status_code=400, detail="No template uploaded yet"
         )
@@ -37,6 +37,8 @@ async def preview_certificates(req: PreviewRequest, user: User = Depends(get_cur
     sample = random.sample(recipients, count)
 
     previews = []
+    # Use the first template page for the quick preview image returned here
+    template_bytes = template_bytes_list[0]
     for r in sample:
         img_bytes = generate_certificate_image(
             template_bytes=template_bytes,

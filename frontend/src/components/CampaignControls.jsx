@@ -1,34 +1,37 @@
 import { useState, useEffect } from 'react';
 import { submitCampaign, stopCampaign, getFailedCSVUrl, sendQuickTest, pauseCampaign, resumeCampaign } from '../lib/api';
 
-const DEFAULT_PLAIN = 'Dear participant,\n\nPlease find your certificate of participation attached.\n\nBest regards,\nThe Team';
+const DEFAULT_PLAIN = 'Dear {{name}},\n\nPlease find your certificate of participation attached.\n\nBest regards,\nThe Team';
 
 const DEFAULT_HTML = `<!DOCTYPE html>
 <html>
-<body style="margin:0; padding:0; background-color:#f4f4f5; font-family: Arial, sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f5; padding:40px 0;">
+<body style="margin:0; padding:0; background-color:#f8fafc; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc; padding:40px 20px;">
     <tr>
       <td align="center">
-        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);">
           <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #4c6ef5, #7c3aed); padding:32px 40px; text-align:center;">
-              <h1 style="margin:0; color:#ffffff; font-size:24px; font-weight:700;">🎓 Your Certificate</h1>
+            <td style="background: linear-gradient(135deg, #6366f1, #a855f7); padding:40px; text-align:center;">
+              <h1 style="margin:0; color:#ffffff; font-size:28px; font-weight:800; letter-spacing:-0.025em;">🎓 Your Certificate</h1>
             </td>
           </tr>
           <!-- Body -->
           <tr>
-            <td style="padding:32px 40px; color:#374151; font-size:16px; line-height:1.7;">
-              <p style="margin:0 0 16px;">Dear Participant,</p>
-              <p style="margin:0 0 16px;">Congratulations! Please find your <strong>certificate of participation</strong> attached to this email.</p>
-              <p style="margin:0 0 16px;">We hope you enjoyed the experience and look forward to seeing you again.</p>
-              <p style="margin:24px 0 0; color:#6b7280;">Best regards,<br/><strong>The Team</strong></p>
+            <td style="padding:40px; color:#1e293b; font-size:16px; line-height:1.8;">
+              <p style="margin:0 0 24px; font-size:18px; font-weight:600;">Dear {{name}},</p>
+              <p style="margin:0 0 20px;">Congratulations! Your hard work has paid off. Please find your <strong>official certificate of participation</strong> attached to this email.</p>
+              <p style="margin:0 0 20px;">It was a pleasure having you with us, and we look forward to your future achievements.</p>
+              <p style="margin:32px 0 0; color:#64748b; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+                Best regards,<br/>
+                <strong style="color: #4f46e5;">The Team</strong>
+              </p>
             </td>
           </tr>
           <!-- Footer -->
           <tr>
-            <td style="background-color:#f9fafb; padding:20px 40px; text-align:center; color:#9ca3af; font-size:12px; border-top:1px solid #e5e7eb;">
-              This is an automated email. Please do not reply.
+            <td style="background-color:#f8fafc; padding:24px 40px; text-align:center; color:#94a3b8; font-size:13px; border-top:1px solid #f1f5f9;">
+              This is an automated delivery. Please do not reply directly to this email.
             </td>
           </tr>
         </table>
@@ -38,7 +41,7 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
+export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isBold, fontFamily, placeholderPages, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
   const [subject, setSubject] = useState('Your Certificate');
   const [htmlMode, setHtmlMode] = useState(false);
   const [emailOnly, setEmailOnly] = useState(false);
@@ -63,18 +66,25 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
     setError('');
     setSubmitting(true);
     try {
+      // If no placeholder_pages configured, default all pages to true (name on every page)
+      const pages = placeholderPages && placeholderPages.length > 0
+        ? placeholderPages
+        : [true];
       const res = await submitCampaign({
         x_percent: coords.x_percent,
         y_percent: coords.y_percent,
         font_size: fontSize,
         font_color: fontColor,
         text_align: textAlign,
+        is_bold: isBold,
+        font_family: fontFamily,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,
         test_mode: testMode,
         start_index: parseInt(startIndex) || 0,
         email_only: emailOnly,
+        placeholder_pages: pages,
       });
       alert(res.message);
     } catch (err) {
@@ -88,18 +98,25 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
     setError('');
     setTestingSingle(true);
     try {
+      // If no placeholder_pages configured, default all pages to true (name on every page)
+      const pages = placeholderPages && placeholderPages.length > 0
+        ? placeholderPages
+        : [true];
       const res = await sendQuickTest({
         x_percent: coords.x_percent,
         y_percent: coords.y_percent,
         font_size: fontSize,
         font_color: fontColor,
         text_align: textAlign,
+        is_bold: isBold,
+        font_family: fontFamily,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,
         test_mode: true,
         start_index: 0,
         email_only: emailOnly,
+        placeholder_pages: pages,
       });
       setError(`✅ ${res.message}`);
       setTimeout(() => setError(''), 5000);

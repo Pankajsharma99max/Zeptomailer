@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { uploadTemplate } from '../lib/api';
 
-export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange, restoredTemplateUrl, restoredTemplateInfo }) {
-  const [templateUrl, setTemplateUrl] = useState(null);
+export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange, isBold, onIsBoldChange, fontFamily, onFontFamilyChange, restoredTemplateUrl, restoredTemplateInfo, placeholderPages, onPlaceholderPagesChange }) {
+  const [templateUrls, setTemplateUrls] = useState([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [templateInfo, setTemplateInfo] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -13,8 +14,11 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
 
   // Restore template from server on mount (if available)
   useEffect(() => {
-    if (restoredTemplateUrl && !templateUrl) {
-      setTemplateUrl(restoredTemplateUrl);
+    if (restoredTemplateUrl && Array.isArray(restoredTemplateUrl) && templateUrls.length === 0) {
+      setTemplateUrls(restoredTemplateUrl);
+      if (!placeholderPages || placeholderPages.length !== restoredTemplateUrl.length) {
+        onPlaceholderPagesChange(restoredTemplateUrl.map(() => true));
+      }
     }
     if (restoredTemplateInfo && !templateInfo) {
       setTemplateInfo(restoredTemplateInfo);
@@ -22,15 +26,18 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
   }, [restoredTemplateUrl, restoredTemplateInfo]);
 
   const handleFileChange = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
     setError('');
 
     try {
-      const result = await uploadTemplate(file);
-      setTemplateUrl(URL.createObjectURL(file));
+      const result = await uploadTemplate(files);
+      const newUrls = Array.from(files).map((f) => URL.createObjectURL(f));
+      setTemplateUrls(newUrls);
+      setActiveIndex(0);
+      onPlaceholderPagesChange(newUrls.map(() => true));
       setTemplateInfo(result);
       // Default position: center
       onCoordsChange({ x_percent: 50, y_percent: 50 });
@@ -102,7 +109,7 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
       </div>
 
       {/* Upload area */}
-      {!templateUrl ? (
+      {templateUrls.length === 0 ? (
         <label className="block cursor-pointer">
           <div className="border-2 border-dashed border-gray-700 hover:border-brand-500/50 rounded-xl p-12 text-center transition-colors duration-300 group">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-800/60 flex items-center justify-center group-hover:bg-brand-500/10 transition-colors">
@@ -110,13 +117,51 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
               </svg>
             </div>
-            <p className="text-gray-400 font-medium">Drop your certificate template here</p>
-            <p className="text-gray-600 text-sm mt-1">JPG or PNG • Click to browse</p>
+            <p className="text-gray-400 font-medium">Drop your certificate templates here</p>
+            <p className="text-gray-600 text-sm mt-1">Select one or more JPG/PNG files</p>
           </div>
-          <input type="file" accept=".jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" id="template-upload" />
+          <input type="file" accept=".jpg,.jpeg,.png" multiple onChange={handleFileChange} className="hidden" id="template-upload" />
         </label>
       ) : (
         <>
+          {/* Page Selector */}
+          {templateUrls.length > 1 && (
+            <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
+              {templateUrls.map((url, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => setActiveIndex(idx)}
+                  className={`relative flex-shrink-0 w-24 h-16 rounded-lg overflow-hidden border-2 transition-all ${
+                    activeIndex === idx ? 'border-brand-500 opacity-100 shadow-md transform scale-105' : 'border-gray-700 opacity-50 hover:opacity-80'
+                  }`}
+                >
+                  <img src={url} alt={`Page ${idx + 1}`} className="w-full h-full object-cover" />
+                  <div className="absolute bottom-0 left-0 bg-black/60 text-white text-[10px] px-1 py-0.5 rounded-tr">
+                    Page {idx + 1}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Placeholder Toggle for current page */}
+          <div className="flex items-center gap-3 bg-gray-800/40 p-3 rounded-lg border border-gray-700/50">
+            <input
+              type="checkbox"
+              id="enable-placeholder"
+              checked={placeholderPages[activeIndex] || false}
+              onChange={(e) => {
+                const newPages = [...placeholderPages];
+                newPages[activeIndex] = e.target.checked;
+                onPlaceholderPagesChange(newPages);
+              }}
+              className="w-4 h-4 text-brand-500 bg-gray-700 border-gray-600 rounded focus:ring-brand-500 cursor-pointer"
+            />
+            <label htmlFor="enable-placeholder" className="text-sm font-medium text-gray-300 cursor-pointer select-none">
+              Draw Name Placeholder on Page {activeIndex + 1}
+            </label>
+          </div>
+
           {/* Template with draggable overlay */}
           <div
             ref={containerRef}
@@ -125,18 +170,19 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
           >
             <img
               ref={imageRef}
-              src={templateUrl}
+              src={templateUrls[activeIndex]}
               alt="Certificate template"
               className="w-full h-auto block"
               draggable={false}
               onError={() => {
                 setError('Failed to load template image. Your session may have expired. Please try uploading the template again or log out and back in.');
-                setTemplateUrl(null);
+                setTemplateUrls([]);
               }}
             />
             {/* Draggable name overlay */}
-            <div
-              onMouseDown={handleMouseDown}
+            {placeholderPages[activeIndex] && (
+              <div
+                onMouseDown={handleMouseDown}
               className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-grab px-4 py-2 
                 rounded-lg border-2 border-dashed transition-all duration-100
                 ${isDragging
@@ -148,6 +194,8 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
                 top: `${coords.y_percent}%`,
                 fontSize: templateInfo ? `${(fontSize * (containerRef.current?.getBoundingClientRect().width || 0)) / templateInfo.width}px` : `${fontSize * 0.4}px`,
                 color: fontColor,
+                fontWeight: isBold ? 'bold' : 'normal',
+                fontFamily: fontFamily === 'Serif' ? 'serif' : fontFamily === 'Mono' ? 'monospace' : 'sans-serif',
                 transform: textAlign === 'left' ? 'translateY(-50%)'
                   : textAlign === 'right' ? 'translate(-100%, -50%)'
                   : 'translate(-50%, -50%)',
@@ -157,9 +205,15 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
                 John Doe
               </span>
             </div>
-            {/* Crosshair guides */}
-            <div className="absolute left-0 right-0 border-t border-brand-500/20 pointer-events-none" style={{ top: `${coords.y_percent}%` }} />
-            <div className="absolute top-0 bottom-0 border-l border-brand-500/20 pointer-events-none" style={{ left: `${coords.x_percent}%` }} />
+            )}
+            
+            {placeholderPages[activeIndex] && (
+              <>
+                {/* Crosshair guides */}
+                <div className="absolute left-0 right-0 border-t border-brand-500/20 pointer-events-none" style={{ top: `${coords.y_percent}%` }} />
+                <div className="absolute top-0 bottom-0 border-l border-brand-500/20 pointer-events-none" style={{ left: `${coords.x_percent}%` }} />
+              </>
+            )}
           </div>
 
           {/* Controls */}
@@ -231,10 +285,38 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-4 pt-4 border-t border-gray-800/50">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onIsBoldChange(!isBold)}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold transition-all ${
+                  isBold ? 'bg-brand-500 text-white shadow-lg' : 'bg-gray-800 text-gray-400 hover:text-gray-200'
+                }`}
+                title="Bold"
+              >
+                B
+              </button>
+              <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Bold Text</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <select
+                value={fontFamily}
+                onChange={(e) => onFontFamilyChange(e.target.value)}
+                className="bg-gray-800 text-gray-300 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg border border-gray-700 focus:border-brand-500/50 outline-none cursor-pointer"
+              >
+                <option value="Roboto">Roboto (Sans)</option>
+                <option value="Serif">Serif</option>
+                <option value="Mono">Monospace</option>
+              </select>
+              <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Font Family</span>
+            </div>
+          </div>
+
           {/* Change template button */}
-          <label className="inline-block cursor-pointer">
-            <span className="btn-secondary text-sm inline-block">Change Template</span>
-            <input type="file" accept=".jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" />
+          <label className="inline-block cursor-pointer mt-4">
+            <span className="btn-secondary text-sm inline-block">Change Template(s)</span>
+            <input type="file" multiple accept=".jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" />
           </label>
         </>
       )}

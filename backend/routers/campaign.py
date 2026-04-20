@@ -17,9 +17,9 @@ router = APIRouter(prefix="/api/campaign", tags=["campaign"])
 @router.post("/submit")
 async def submit_campaign(config: CampaignConfig, user: User = Depends(get_current_user)):
     """Worker submits a campaign for admin approval."""
-    template_bytes, recipients = store.get_draft_data(user.id)
+    template_bytes_list, recipients = store.get_draft_data(user.id)
     
-    if not config.email_only and not template_bytes:
+    if not config.email_only and not template_bytes_list:
         raise HTTPException(status_code=400, detail="No template uploaded yet")
     if not recipients:
         raise HTTPException(status_code=400, detail="No CSV uploaded yet")
@@ -84,7 +84,7 @@ async def approve_campaign(campaign_id: str, admin: User = Depends(require_admin
         # Update the config in the database as well so it's persisted
         with db_cursor() as cursor:
             cursor.execute("UPDATE campaigns SET config = ? WHERE id = ?", (config.model_dump_json(), campaign_id))
-    template_bytes, recipients = store.get_campaign_data(campaign_id)
+    template_bytes_list, recipients = store.get_campaign_data(campaign_id)
     
     # Update status to approved/running
     with db_cursor() as cursor:
@@ -92,7 +92,7 @@ async def approve_campaign(campaign_id: str, admin: User = Depends(require_admin
 
     # Launch campaign
     asyncio.create_task(
-        run_campaign_wrapper(campaign_id, recipients, template_bytes, config)
+        run_campaign_wrapper(campaign_id, recipients, template_bytes_list, config)
     )
 
     return {"message": "Campaign approved and started"}
@@ -116,9 +116,9 @@ async def reject_campaign(campaign_id: str, admin: User = Depends(require_admin)
 
     return {"message": "Campaign rejected"}
 
-async def run_campaign_wrapper(campaign_id, recipients, template_bytes, config, is_retry_failed=False):
+async def run_campaign_wrapper(campaign_id, recipients, template_bytes_list, config, is_retry_failed=False):
     """Wrapper to update DB status after campaign completes."""
-    await run_campaign(recipients, template_bytes, config, campaign_id=campaign_id, is_retry_failed=is_retry_failed)
+    await run_campaign(recipients, template_bytes_list, config, campaign_id=campaign_id, is_retry_failed=is_retry_failed)
 
 @router.post("/stop")
 async def stop_campaign(user: User = Depends(get_current_user)):
@@ -182,7 +182,7 @@ async def retry_failed_campaign(campaign_id: str, admin: User = Depends(require_
     # Reset start_index for retry run because we are only passing failed recipients
     config.start_index = 0
     
-    template_bytes, _ = store.get_campaign_data(campaign_id)
+    template_bytes_list, _ = store.get_campaign_data(campaign_id)
     
     # Update status to running
     with db_cursor() as cursor:
@@ -190,7 +190,7 @@ async def retry_failed_campaign(campaign_id: str, admin: User = Depends(require_
 
     # Launch campaign for failed recipients only
     asyncio.create_task(
-        run_campaign_wrapper(campaign_id, failed_recipients, template_bytes, config, is_retry_failed=True)
+        run_campaign_wrapper(campaign_id, failed_recipients, template_bytes_list, config, is_retry_failed=True)
     )
 
     return {"message": "Retry for failed recipients started"}

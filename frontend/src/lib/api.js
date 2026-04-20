@@ -68,9 +68,15 @@ export async function uploadCSV(file) {
   return handleResponse(res);
 }
 
-export async function uploadTemplate(file) {
+export async function uploadTemplate(files) {
   const formData = new FormData();
-  formData.append('file', file);
+  if (files instanceof FileList || Array.isArray(files)) {
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+  } else {
+    formData.append('files', files);
+  }
   const res = await fetch(`${API_BASE}/api/upload/template`, {
     method: 'POST',
     headers: getHeaders(),
@@ -194,9 +200,9 @@ export async function deleteHistoryItem(id) {
   });
   return handleResponse(res);
 }
-export function getTemplateImageUrl() {
+export function getTemplateImageUrl(index = 0) {
   const token = localStorage.getItem('auth_token') || '';
-  return `${API_BASE}/api/upload/template-image?token=${token}`;
+  return `${API_BASE}/api/upload/template-image?index=${index}&token=${token}`;
 }
 
 export async function fetchSettings() {

@@ -16,11 +16,14 @@ export default function App() {
   const [fontSize, setFontSize] = useState(48);
   const [fontColor, setFontColor] = useState('#000000');
   const [textAlign, setTextAlign] = useState('center');
+  const [isBold, setIsBold] = useState(false);
+  const [fontFamily, setFontFamily] = useState('Roboto');
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [lastStatus, setLastStatus] = useState(null);
   const [restoredTemplateUrl, setRestoredTemplateUrl] = useState(null);
   const [restoredTemplateInfo, setRestoredTemplateInfo] = useState(null);
+  const [placeholderPages, setPlaceholderPages] = useState([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [lastSentCount, setLastSentCount] = useState(0);
   
@@ -40,7 +43,12 @@ export default function App() {
     fetchStatus()
       .then((data) => {
         if (data.template_loaded) {
-          setRestoredTemplateUrl(getTemplateImageUrl());
+          const count = data.template_count || 1;
+          const urls = [];
+          for (let i = 0; i < count; i++) {
+            urls.push(getTemplateImageUrl(i));
+          }
+          setRestoredTemplateUrl(urls);
           setRestoredTemplateInfo({
             width: data.template_width,
             height: data.template_height,
@@ -138,7 +146,7 @@ export default function App() {
           )}
 
           {view === 'admin' && user.role === 'admin' ? (
-            <AdminDashboard />
+            <AdminDashboard user={user} setView={setView} />
           ) : view === 'settings' && user.role === 'admin' ? (
             <Settings />
           ) : (
@@ -176,8 +184,14 @@ export default function App() {
                     onFontColorChange={setFontColor}
                     textAlign={textAlign}
                     onTextAlignChange={setTextAlign}
+                    isBold={isBold}
+                    onIsBoldChange={setIsBold}
+                    fontFamily={fontFamily}
+                    onFontFamilyChange={setFontFamily}
                     restoredTemplateUrl={restoredTemplateUrl}
                     restoredTemplateInfo={restoredTemplateInfo}
+                    placeholderPages={placeholderPages}
+                    onPlaceholderPagesChange={setPlaceholderPages}
                   />
                   <CsvUploader
                     onUploaded={() => { setCsvUploaded(true); setRecipientCount(prev => prev || 1); }}
@@ -186,12 +200,22 @@ export default function App() {
                 </div>
 
                 <div className="space-y-6">
-                  <PreviewPanel coords={coords} fontSize={fontSize} fontColor={fontColor} textAlign={textAlign} />
+                  <PreviewPanel 
+                    coords={coords} 
+                    fontSize={fontSize} 
+                    fontColor={fontColor} 
+                    textAlign={textAlign}
+                    isBold={isBold}
+                    fontFamily={fontFamily}
+                  />
                   <CampaignControls
                     coords={coords}
                     fontSize={fontSize}
                     fontColor={fontColor}
                     textAlign={textAlign}
+                    isBold={isBold}
+                    fontFamily={fontFamily}
+                    placeholderPages={placeholderPages}
                     isRunning={isRunning}
                     onRunningChange={setIsRunning}
                     lastStatus={lastStatus}
