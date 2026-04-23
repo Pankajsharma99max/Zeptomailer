@@ -11,6 +11,7 @@ class CampaignConfig(BaseModel):
     font_color: str = "#000000"
     is_bold: bool = False
     font_family: str = "Roboto"
+    text_effect: str = "none"
     text_align: Literal["left", "center", "right"] = "center"
     email_subject: str = "Your Certificate"
     email_body: str = "Please find your certificate attached."
@@ -41,6 +42,7 @@ class PreviewRequest(BaseModel):
     font_color: str = "#000000"
     is_bold: bool = False
     font_family: str = "Roboto"
+    text_effect: str = "none"
     text_align: str = "center"
     sample_count: int = 5
 

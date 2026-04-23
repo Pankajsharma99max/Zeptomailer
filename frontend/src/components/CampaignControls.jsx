@@ -41,7 +41,7 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isBold, fontFamily, placeholderPages, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
+export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isBold, fontFamily, textEffect, placeholderPages, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
   const [subject, setSubject] = useState('Your Certificate');
   const [htmlMode, setHtmlMode] = useState(false);
   const [emailOnly, setEmailOnly] = useState(false);
@@ -78,6 +78,7 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         text_align: textAlign,
         is_bold: isBold,
         font_family: fontFamily,
+        text_effect: textEffect,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,
@@ -110,6 +111,7 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         text_align: textAlign,
         is_bold: isBold,
         font_family: fontFamily,
+        text_effect: textEffect,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,

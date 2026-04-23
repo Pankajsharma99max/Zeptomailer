@@ -48,6 +48,9 @@ async def preview_certificates(req: PreviewRequest, user: User = Depends(get_cur
             font_size=req.font_size,
             font_color=req.font_color,
             text_align=req.text_align,
+            is_bold=req.is_bold,
+            font_family=req.font_family,
+            text_effect=req.text_effect,
         )
         previews.append(
             {

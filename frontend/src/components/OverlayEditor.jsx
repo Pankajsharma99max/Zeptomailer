@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { uploadTemplate } from '../lib/api';
 
-export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange, isBold, onIsBoldChange, fontFamily, onFontFamilyChange, restoredTemplateUrl, restoredTemplateInfo, placeholderPages, onPlaceholderPagesChange }) {
+export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFontSizeChange, fontColor, onFontColorChange, textAlign, onTextAlignChange, isBold, onIsBoldChange, fontFamily, onFontFamilyChange, textEffect, onTextEffectChange, restoredTemplateUrl, restoredTemplateInfo, placeholderPages, onPlaceholderPagesChange }) {
   const [templateUrls, setTemplateUrls] = useState([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [templateInfo, setTemplateInfo] = useState(null);
@@ -195,10 +195,18 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
                 fontSize: templateInfo ? `${(fontSize * (containerRef.current?.getBoundingClientRect().width || 0)) / templateInfo.width}px` : `${fontSize * 0.4}px`,
                 color: fontColor,
                 fontWeight: isBold ? 'bold' : 'normal',
-                fontFamily: fontFamily === 'Serif' ? 'serif' : fontFamily === 'Mono' ? 'monospace' : 'sans-serif',
+                fontFamily: fontFamily === 'Serif' ? 'Cinzel, serif' : 
+                            fontFamily === 'Cinzel' ? 'Cinzel, serif' :
+                            fontFamily === 'Playfair Display' ? '"Playfair Display", serif' :
+                            fontFamily === 'Montserrat' ? 'Montserrat, sans-serif' :
+                            fontFamily === 'Mono' ? 'monospace' : 'Roboto, sans-serif',
                 transform: textAlign === 'left' ? 'translateY(-50%)'
                   : textAlign === 'right' ? 'translate(-100%, -50%)'
                   : 'translate(-50%, -50%)',
+                textShadow: textEffect === 'shadow' ? '4px 4px 8px rgba(0,0,0,0.6)' : 
+                            textEffect === 'gold-glow' ? '0 0 10px rgba(212,175,55,0.8), 2px 2px 4px rgba(212,175,55,0.8)' : 'none',
+                WebkitTextStroke: textEffect === 'outline-white' ? '2px white' : 
+                                  textEffect === 'outline-black' ? '2px black' : 'none',
               }}
             >
               <span className="font-semibold whitespace-nowrap select-none pointer-events-none">
@@ -306,10 +314,28 @@ export default function OverlayEditor({ onCoordsChange, coords, fontSize, onFont
                 className="bg-gray-800 text-gray-300 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg border border-gray-700 focus:border-brand-500/50 outline-none cursor-pointer"
               >
                 <option value="Roboto">Roboto (Sans)</option>
-                <option value="Serif">Serif</option>
+                <option value="Cinzel">Cinzel (Premium Serif)</option>
+                <option value="Playfair Display">Playfair Display (Elegant)</option>
+                <option value="Montserrat">Montserrat (Modern)</option>
+                <option value="Serif">Default Serif</option>
                 <option value="Mono">Monospace</option>
               </select>
               <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Font Family</span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <select
+                value={textEffect}
+                onChange={(e) => onTextEffectChange(e.target.value)}
+                className="bg-gray-800 text-gray-300 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg border border-gray-700 focus:border-brand-500/50 outline-none cursor-pointer"
+              >
+                <option value="none">None</option>
+                <option value="shadow">Drop Shadow</option>
+                <option value="outline-white">White Outline</option>
+                <option value="outline-black">Black Outline</option>
+                <option value="gold-glow">Gold Glow</option>
+              </select>
+              <span className="text-xs text-gray-500 font-medium uppercase tracking-wider">Text Effect</span>
             </div>
           </div>
 

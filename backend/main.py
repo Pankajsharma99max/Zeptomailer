@@ -155,3 +155,4 @@ else:
             "status": "running",
             "docs": "/docs",
         }
+

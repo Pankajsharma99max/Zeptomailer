@@ -211,8 +211,9 @@ async def run_campaign(
                         font_size=config.font_size,
                         font_color=config.font_color,
                         text_align=config.text_align,
-                        is_bold=config.is_bold,
                         font_family=config.font_family,
+                        is_bold=config.is_bold,
+                        text_effect=config.text_effect,
                         placeholder_pages=config.placeholder_pages,
                     )
                 batch_data.append(

@@ -18,6 +18,7 @@ export default function App() {
   const [textAlign, setTextAlign] = useState('center');
   const [isBold, setIsBold] = useState(false);
   const [fontFamily, setFontFamily] = useState('Roboto');
+  const [textEffect, setTextEffect] = useState('none');
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [lastStatus, setLastStatus] = useState(null);
@@ -188,6 +189,8 @@ export default function App() {
                     onIsBoldChange={setIsBold}
                     fontFamily={fontFamily}
                     onFontFamilyChange={setFontFamily}
+                    textEffect={textEffect}
+                    onTextEffectChange={setTextEffect}
                     restoredTemplateUrl={restoredTemplateUrl}
                     restoredTemplateInfo={restoredTemplateInfo}
                     placeholderPages={placeholderPages}
@@ -207,6 +210,7 @@ export default function App() {
                     textAlign={textAlign}
                     isBold={isBold}
                     fontFamily={fontFamily}
+                    textEffect={textEffect}
                   />
                   <CampaignControls
                     coords={coords}
@@ -215,6 +219,7 @@ export default function App() {
                     textAlign={textAlign}
                     isBold={isBold}
                     fontFamily={fontFamily}
+                    textEffect={textEffect}
                     placeholderPages={placeholderPages}
                     isRunning={isRunning}
                     onRunningChange={setIsRunning}
