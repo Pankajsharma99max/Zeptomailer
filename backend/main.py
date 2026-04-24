@@ -7,7 +7,7 @@ In development, the frontend runs on its own Vite dev server.
 
 import os
 import logging
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -58,15 +58,32 @@ app.add_middleware(
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     """Add various HTTP security headers for hardening."""
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Basic CSP - allow self, fonts, and images
-    # Added Google Fonts support: https://fonts.googleapis.com and https://fonts.gstatic.com
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:;"
-    return response
+    try:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        
+        # Expanded CSP: 
+        # - style-src: allows Google Fonts CSS and inline styles
+        # - font-src: allows Google Font files and local data:
+        # - img-src: allows self, data: URIs, and blob: URLs (for certificate previews)
+        # - connect-src: allows self and WebSockets
+        csp = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
+            "img-src 'self' data: blob:; "
+            "connect-src 'self' ws: wss:; "
+            "frame-ancestors 'none';"
+        )
+        response.headers["Content-Security-Policy"] = csp
+        return response
+    except Exception as e:
+        logger.error(f"Middleware error: {e}")
+        raise
 
 # Include API routers
 app.include_router(auth.router)
@@ -122,14 +139,21 @@ if os.path.isdir(STATIC_DIR):
     # Serve other static files (favicon, vite.svg, etc.)
     @app.get("/vite.svg")
     async def vite_svg():
-        vite_path = os.path.join(STATIC_DIR, "vite.svg")
-        if os.path.exists(vite_path):
-            return FileResponse(vite_path)
-        # Fallback to favicon.svg if vite.svg is missing to prevent 500 Internal Server Error
-        fallback = os.path.join(STATIC_DIR, "favicon.svg")
-        if os.path.exists(fallback):
-            return FileResponse(fallback)
-        return {"detail": "SVG not found"}
+        try:
+            vite_path = os.path.join(STATIC_DIR, "vite.svg")
+            if os.path.exists(vite_path):
+                return FileResponse(vite_path, media_type="image/svg+xml")
+            
+            # Fallback to favicon.svg if vite.svg is missing to prevent 500 Internal Server Error
+            fallback = os.path.join(STATIC_DIR, "favicon.svg")
+            if os.path.exists(fallback):
+                return FileResponse(fallback, media_type="image/svg+xml")
+            
+            # Final fallback to avoid 500 if even favicon is missing
+            return Response(status_code=404)
+        except Exception as e:
+            logger.error(f"Error serving vite.svg: {e}")
+            return Response(status_code=404)
 
     # Catch-all: serve index.html for any non-API, non-WS route
     # This enables client-side routing (React Router, etc.)
