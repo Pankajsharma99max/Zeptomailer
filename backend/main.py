@@ -42,15 +42,17 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS — allow development and production origins
+# If FRONTEND_ORIGIN is "*", we allow all origins but must disable allow_credentials (not needed for Bearer tokens)
+cors_allow_all = settings.FRONTEND_ORIGIN == "*"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
+    allow_origins=["*"] if cors_allow_all else [
         settings.FRONTEND_ORIGIN,
         "http://devnovate.co:9000",
         "http://localhost:5173",
         "http://localhost:3000"
-    ] if settings.FRONTEND_ORIGIN != "*" else ["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
+    ],
+    allow_credentials=not cors_allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -63,9 +65,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    # Basic CSP - allow self, fonts, and images
+    # Basic CSP - allow self, fonts, and images (including blob: for local previews)
     # Added Google Fonts support: https://fonts.googleapis.com and https://fonts.gstatic.com
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data:;"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob:;"
     return response
 
 # Include API routers
