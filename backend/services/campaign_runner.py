@@ -99,10 +99,21 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
     
     for row in reader:
         total_rows += 1
-        # Try to find name and email columns (case-insensitive)
+        # Normalize keys to lowercase and strip whitespace
         normalized = {k.strip().lower(): v.strip() for k, v in row.items() if k}
-        name = normalized.get("name", "").strip()
-        email = normalized.get("email", "").lower().strip()
+        
+        # Flexible column lookup
+        email = ""
+        for key in ["email", "e-mail", "email address", "mail", "recipient email"]:
+            if key in normalized:
+                email = normalized[key].lower().strip()
+                break
+        
+        name = ""
+        for key in ["name", "full name", "recipient name", "customer name", "student name"]:
+            if key in normalized:
+                name = normalized[key].strip()
+                break
 
         # Skip if email is missing, empty, or '0' or doesn't look like an email
         if not email or email == "0" or "@" not in email:
