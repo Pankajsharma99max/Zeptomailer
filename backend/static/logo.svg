@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 220" width="400" height="220">
+  <!-- CERTIFY text -->
+  <text x="200" y="55" font-family="'Inter', Arial, sans-serif" font-size="42" letter-spacing="14" text-anchor="middle" fill="#000">CERTIFY</text>
+  
+  <!-- HUB concentric line effect -->
+  <g font-family="'Inter', Arial, sans-serif" font-size="160" font-weight="900" text-anchor="middle" letter-spacing="6">
+    <text x="200" y="200" fill="none" stroke="#000" stroke-width="14">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#fff" stroke-width="12">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#000" stroke-width="10">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#fff" stroke-width="8">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#000" stroke-width="6">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#fff" stroke-width="4">HUB</text>
+    <text x="200" y="200" fill="none" stroke="#000" stroke-width="1.5">HUB</text>
+    <text x="200" y="200" fill="#fff" stroke="none">HUB</text>
+  </g>
+</svg>

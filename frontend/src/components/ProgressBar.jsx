@@ -9,32 +9,26 @@ export default function ProgressBar({ isRunning }) {
   useEffect(() => {
     if (!isRunning) return;
 
-    // Try WebSocket first, fall back to polling
     let wsConnected = false;
 
     try {
       const ws = createProgressSocket();
       wsRef.current = ws;
 
-      ws.onopen = () => {
-        wsConnected = true;
-      };
+      ws.onopen = () => { wsConnected = true; };
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           setProgress(data);
-        } catch (e) { /* ignore */ }
+        } catch { /* ignore */ }
       };
 
       ws.onerror = () => {
-        // Fall back to polling
         if (!wsConnected) startPolling();
       };
 
-      ws.onclose = () => {
-        wsRef.current = null;
-      };
+      ws.onclose = () => { wsRef.current = null; };
     } catch {
       startPolling();
     }
@@ -52,14 +46,8 @@ export default function ProgressBar({ isRunning }) {
     }
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
   }, [isRunning]);
 
@@ -77,15 +65,15 @@ export default function ProgressBar({ isRunning }) {
     return `${mins}m ${secs}s`;
   };
 
-  const statusColors = {
-    running: 'from-brand-500 to-blue-500',
-    completed: 'from-emerald-500 to-green-500',
-    stopped: 'from-amber-500 to-yellow-500',
-    error: 'from-rose-500 to-red-500',
-    idle: 'from-gray-500 to-gray-600',
+  const barColor = {
+    running: 'bg-brand-600',
+    completed: 'bg-emerald-500',
+    stopped: 'bg-amber-500',
+    error: 'bg-red-500',
+    idle: 'bg-surface-elevated',
   };
 
-  const statusLabels = {
+  const statusLabel = {
     running: 'Sending',
     completed: 'Completed',
     stopped: 'Stopped',
@@ -94,73 +82,52 @@ export default function ProgressBar({ isRunning }) {
   };
 
   return (
-    <div className="glass-card p-6 space-y-4">
+    <div className="glass-card p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="section-title">
-          <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          Campaign Progress
-        </h2>
+        <h2 className="section-title">Progress</h2>
         <span className={`badge ${
           progress.status === 'running' ? 'badge-info' :
           progress.status === 'completed' ? 'badge-success' :
           progress.status === 'error' ? 'badge-danger' : 'badge-warning'
         }`}>
-          {progress.status === 'running' && (
-            <span className="w-1.5 h-1.5 rounded-full bg-brand-400 mr-2 animate-pulse"></span>
-          )}
-          {statusLabels[progress.status] || progress.status}
+          {statusLabel[progress.status] || progress.status}
         </span>
       </div>
 
-      {/* Progress bar */}
-      <div className="relative">
-        <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full bg-gradient-to-r ${statusColors[progress.status] || statusColors.idle} transition-all duration-500 ease-out ${
-              progress.status === 'running' ? 'progress-striped' : ''
-            }`}
-            style={{ width: `${percent}%` }}
-          />
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-xs font-bold text-white drop-shadow-md">{percent}%</span>
-        </div>
+      <div className="w-full h-2 bg-surface-elevated rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ease-out ${barColor[progress.status] || barColor.idle} ${
+            progress.status === 'running' ? 'progress-striped' : ''
+          }`}
+          style={{ width: `${percent}%` }}
+        />
       </div>
 
-      {/* Stats grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-gray-800/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-white">{progress.sent.toLocaleString()}</p>
-          <p className="text-xs text-emerald-400 font-medium">Sent</p>
-        </div>
-        <div className="bg-gray-800/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-white">{progress.failed.toLocaleString()}</p>
-          <p className="text-xs text-rose-400 font-medium">Failed</p>
-        </div>
-        <div className="bg-gray-800/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-white">{progress.total.toLocaleString()}</p>
-          <p className="text-xs text-gray-400 font-medium">Total</p>
-        </div>
-        <div className="bg-gray-800/40 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-white">{formatTime(progress.estimated_seconds_remaining)}</p>
-          <p className="text-xs text-brand-400 font-medium">ETA</p>
-        </div>
+      <div className="grid grid-cols-4 gap-3">
+        <Stat value={progress.sent} label="Sent" color="text-emerald-600 dark:text-emerald-400" />
+        <Stat value={progress.failed} label="Failed" color="text-red-600 dark:text-red-400" />
+        <Stat value={progress.total} label="Total" color="text-content-muted" />
+        <Stat value={formatTime(progress.estimated_seconds_remaining)} label="ETA" color="text-brand-600 dark:text-brand-400" />
       </div>
 
-      {/* Status line */}
-      <div className="flex items-center justify-between text-sm text-gray-400">
+      <div className="flex items-center justify-between text-xs text-content-muted">
         <span>
           Batch {progress.current_batch} of {progress.total_batches}
           {progress.current_name && progress.status === 'running' && (
-            <span className="text-gray-500 ml-2">• Processing: {progress.current_name}</span>
+            <span className="ml-1.5 text-content-muted">· {progress.current_name}</span>
           )}
         </span>
-        <span>
-          Sent {progress.sent.toLocaleString()} of {progress.total.toLocaleString()}
-        </span>
+        <span>{percent}%</span>
       </div>
+    </div>
+  );
+}
+
+function Stat({ value, label, color }) {
+  return (
+    <div className="text-center">
+      <p className="text-xl font-semibold text-content-primary">{typeof value === 'number' ? value.toLocaleString() : value}</p>
+      <p className={`text-xs ${color}`}>{label}</p>
     </div>
   );
 }

@@ -16,7 +16,7 @@ from models import Recipient
 logger = logging.getLogger(__name__)
 
 # Persistent storage directory
-DATA_DIR = os.environ.get("CERTFLOW_DATA_DIR", "/tmp/certflow_data")
+DATA_DIR = os.environ.get("CERTFLOW_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 
 
 class Store:

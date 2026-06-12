@@ -11,22 +11,31 @@ Upload templates, position names with WYSIWYG editor, preview, and send thousand
 - 🧪 **Test Mode** — send only to admin email
 - 📥 **Error Handling** — download Failed_Sends.csv after campaign
 
-## Quick Start (Local)
+## Quick Start (Local, Windows)
+
+The repo ships with a ready production build (`backend/static`) and a Python venv (`backend/.venv`).
+
+1. Edit `backend/.env` — set `ZEPTOMAIL_TOKEN`, `SENDER_EMAIL`, `ADMIN_EMAIL`, `APP_PASSWORD`.
+2. Double-click **`start.bat`** — serves the app (UI + API) at http://localhost:8000.
+3. Log in with username = `ADMIN_EMAIL`, password = `APP_PASSWORD`.
+
+After changing frontend code, run **`rebuild-frontend.bat`** to refresh `backend/static`.
+For hot-reload development, use **`start-dev.bat`** (backend :8000 + Vite :5173).
+
+### Manual setup (first time on a new machine)
 
 ```bash
 # Backend
 cd backend
 copy .env.example .env   # Edit with your ZeptoMail token
-pip install -r requirements.txt
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
 
 # Frontend
 cd frontend
 npm install
-npm run dev
+npm run build            # or `npm run dev` for development
 ```
-
-Open http://localhost:5173
 
 ## Deploy to Render
 

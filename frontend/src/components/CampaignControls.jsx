@@ -10,17 +10,15 @@ const DEFAULT_HTML = `<!DOCTYPE html>
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1);">
-          <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #6366f1, #a855f7); padding:40px; text-align:center;">
-              <h1 style="margin:0; color:#ffffff; font-size:28px; font-weight:800; letter-spacing:-0.025em;">🎓 Your Certificate</h1>
+            <td style="background: linear-gradient(135deg, #4f46e5, #6366f1); padding:40px; text-align:center;">
+              <h1 style="margin:0; color:#ffffff; font-size:24px; font-weight:700;">Your Certificate</h1>
             </td>
           </tr>
-          <!-- Body -->
           <tr>
             <td style="padding:40px; color:#1e293b; font-size:16px; line-height:1.8;">
-              <p style="margin:0 0 24px; font-size:18px; font-weight:600;">Dear {{name}},</p>
-              <p style="margin:0 0 20px;">Congratulations! Your hard work has paid off. Please find your <strong>official certificate of participation</strong> attached to this email.</p>
+              <p style="margin:0 0 20px;">Dear <strong>{{name}}</strong>,</p>
+              <p style="margin:0 0 20px;">Congratulations! Please find your official certificate of participation attached to this email.</p>
               <p style="margin:0 0 20px;">It was a pleasure having you with us, and we look forward to your future achievements.</p>
               <p style="margin:32px 0 0; color:#64748b; border-top: 1px solid #f1f5f9; padding-top: 24px;">
                 Best regards,<br/>
@@ -28,10 +26,9 @@ const DEFAULT_HTML = `<!DOCTYPE html>
               </p>
             </td>
           </tr>
-          <!-- Footer -->
           <tr>
-            <td style="background-color:#f8fafc; padding:24px 40px; text-align:center; color:#94a3b8; font-size:13px; border-top:1px solid #f1f5f9;">
-              This is an automated delivery. Please do not reply directly to this email.
+            <td style="background-color:#f8fafc; padding:20px 40px; text-align:center; color:#94a3b8; font-size:13px; border-top:1px solid #f1f5f9;">
+              This is an automated delivery. Please do not reply directly.
             </td>
           </tr>
         </table>
@@ -51,6 +48,7 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
   const [testMode, setTestMode] = useState(false);
   const [startIndex, setStartIndex] = useState(0);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [testingSingle, setTestingSingle] = useState(false);
 
@@ -64,9 +62,9 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
 
   const handleSubmit = async () => {
     setError('');
+    setSuccess('');
     setSubmitting(true);
     try {
-      // If no placeholder_pages configured, default all pages to true (name on every page)
       const pages = placeholderPages && placeholderPages.length > 0
         ? placeholderPages
         : [true];
@@ -87,7 +85,8 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         email_only: emailOnly,
         placeholder_pages: pages,
       });
-      alert(res.message);
+      setSuccess(res.message);
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -97,9 +96,9 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
 
   const handleQuickTest = async () => {
     setError('');
+    setSuccess('');
     setTestingSingle(true);
     try {
-      // If no placeholder_pages configured, default all pages to true (name on every page)
       const pages = placeholderPages && placeholderPages.length > 0
         ? placeholderPages
         : [true];
@@ -120,53 +119,36 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         email_only: emailOnly,
         placeholder_pages: pages,
       });
-      setError(`✅ ${res.message}`);
-      setTimeout(() => setError(''), 5000);
+      setSuccess(res.message);
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err) {
-      setError(`❌ Quick test failed: ${err.message}`);
+      setError(`Quick test failed: ${err.message}`);
     } finally {
       setTestingSingle(false);
     }
   };
 
   const handleStop = async () => {
-    try {
-      await stopCampaign();
-    } catch (err) {
-      setError(err.message);
-    }
+    try { await stopCampaign(); } catch (err) { setError(err.message); }
   };
 
   const handlePause = async () => {
-    try {
-      await pauseCampaign();
-    } catch (err) {
-      setError(err.message);
-    }
+    try { await pauseCampaign(); } catch (err) { setError(err.message); }
   };
 
   const handleResume = async () => {
-    try {
-      await resumeCampaign();
-    } catch (err) {
-      setError(err.message);
-    }
+    try { await resumeCampaign(); } catch (err) { setError(err.message); }
   };
 
   const showDownload = lastStatus && ['completed', 'stopped', 'error'].includes(lastStatus);
 
   return (
-    <div className="glass-card p-6 space-y-5">
-      <h2 className="section-title">
-        <svg className="w-5 h-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-        </svg>
-        Campaign Settings
-      </h2>
+    <div className="glass-card p-5 space-y-4">
+      <h2 className="section-title">Campaign</h2>
 
       <div className="space-y-4">
         <div>
-          <label htmlFor="email-subject" className="label-text">Email Subject</label>
+          <label htmlFor="email-subject" className="label-text">Subject</label>
           <input
             id="email-subject"
             type="text"
@@ -179,23 +161,23 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="label-text mb-0">Email Body</label>
-            <div className="flex items-center gap-1 bg-gray-800/60 rounded-lg p-0.5">
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="label-text mb-0">Body</label>
+            <div className="flex items-center gap-0.5 bg-surface-elevated rounded-lg p-0.5">
               <button
                 onClick={() => setHtmlMode(false)}
                 disabled={isRunning}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 ${
-                  !htmlMode ? 'bg-brand-500 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  !htmlMode ? 'bg-surface-card text-content-primary' : 'text-content-muted hover:text-content-secondary'
                 }`}
               >
-                Plain Text
+                Plain
               </button>
               <button
                 onClick={() => setHtmlMode(true)}
                 disabled={isRunning}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all duration-200 flex items-center gap-1.5 ${
-                  htmlMode ? 'bg-brand-500 text-white shadow-md' : 'text-gray-400 hover:text-gray-200'
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  htmlMode ? 'bg-surface-card text-content-primary' : 'text-content-muted hover:text-content-secondary'
                 }`}
               >
                 HTML
@@ -208,37 +190,37 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
               value={plainBody}
               onChange={(e) => setPlainBody(e.target.value)}
               rows={4}
-              className="input-field resize-none"
+              className="input-field resize-none text-sm"
               disabled={isRunning}
             />
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               <textarea
                 value={htmlBody}
                 onChange={(e) => setHtmlBody(e.target.value)}
-                rows={8}
-                className="input-field font-mono text-sm"
+                rows={6}
+                className="input-field font-mono text-xs resize-none"
                 disabled={isRunning}
               />
               <button
                 onClick={() => setShowPreview(!showPreview)}
-                className="text-sm text-brand-400 font-medium flex items-center gap-1.5"
+                className="text-xs text-brand-400 hover:text-brand-300 transition-colors"
               >
-                {showPreview ? 'Hide Preview' : 'Show Live Preview'}
+                {showPreview ? 'Hide preview' : 'Show preview'}
               </button>
               {showPreview && (
-                <div className="rounded-xl border border-gray-700/50 overflow-hidden bg-white">
-                  <iframe srcDoc={htmlBody} className="w-full border-0 min-h-[300px]" sandbox="allow-same-origin allow-scripts" />
+                <div className="rounded-lg border border-line overflow-hidden bg-white">
+                  <iframe srcDoc={htmlBody} className="w-full border-0 min-h-[200px]" sandbox="allow-same-origin allow-scripts" />
                 </div>
               )}
             </div>
           )}
         </div>
 
-        <div className="flex items-center justify-between bg-gray-800/40 rounded-xl p-4">
+        <div className="flex items-center justify-between bg-surface-hover rounded-lg p-3">
           <div>
-            <p className="font-medium text-white">Start From Row</p>
-            <p className="text-sm text-gray-500">0 = beginning</p>
+            <p className="text-sm font-medium text-content-primary">Start from row</p>
+            <p className="text-xs text-content-muted">0 = beginning</p>
           </div>
           <input
             type="number"
@@ -246,79 +228,61 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
             value={startIndex}
             onChange={(e) => setStartIndex(e.target.value)}
             disabled={isRunning}
-            className="w-24 bg-gray-700 border border-gray-600 rounded-lg px-3 py-1.5 text-white text-sm"
+            className="w-20 bg-surface-input border border-line rounded-lg px-3 py-1.5 text-content-primary text-sm text-center"
           />
         </div>
 
-        <div className="flex items-center justify-between bg-gray-800/40 rounded-xl p-4">
-          <div>
-            <p className="font-medium text-white">Newsletter Mode</p>
-            <p className="text-sm text-gray-500">No PDF attachment</p>
-          </div>
-          <button
-            onClick={() => setEmailOnly(!emailOnly)}
-            disabled={isRunning}
-            className={`relative w-14 h-7 rounded-full transition-all duration-300 ${emailOnly ? 'bg-brand-500' : 'bg-gray-700'}`}
-          >
-            <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${emailOnly ? 'left-[calc(100%-1.625rem)]' : 'left-0.5'}`} />
-          </button>
-        </div>
+        <Toggle
+          label="Newsletter mode"
+          description="Email only, no PDF"
+          enabled={emailOnly}
+          onChange={() => setEmailOnly(!emailOnly)}
+          disabled={isRunning}
+        />
 
-        <div className="flex items-center justify-between bg-gray-800/40 rounded-xl p-4">
-          <div>
-            <p className="font-medium text-white">Test Mode</p>
-            <p className="text-sm text-gray-500">Sends to your email only</p>
-          </div>
-          <button
-            onClick={() => setTestMode(!testMode)}
-            disabled={isRunning}
-            className={`relative w-14 h-7 rounded-full transition-all duration-300 ${testMode ? 'bg-amber-500' : 'bg-gray-700'}`}
-          >
-            <div className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-all duration-300 ${testMode ? 'left-[calc(100%-1.625rem)]' : 'left-0.5'}`} />
-          </button>
-        </div>
+        <Toggle
+          label="Test mode"
+          description="Sends to admin email only"
+          enabled={testMode}
+          onChange={() => setTestMode(!testMode)}
+          disabled={isRunning}
+          color="amber"
+        />
       </div>
 
-      {error && <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-3 text-rose-400 text-sm">{error}</div>}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-red-600 dark:text-red-400 text-sm">{error}</div>
+      )}
 
-      <div className="flex flex-wrap items-center gap-3">
+      {success && (
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2 text-emerald-600 dark:text-emerald-400 text-sm">{success}</div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
         {!isRunning ? (
           <button
             onClick={handleSubmit}
             disabled={submitting}
             className="btn-primary flex items-center gap-2"
           >
-            {submitting ? (
-              <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+            {submitting && (
+              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
             )}
-            {userRole === 'worker' ? 'Submit for Admin Approval' : (testMode ? 'Start Test Send' : 'Start Campaign')}
+            {userRole === 'worker' ? 'Submit for approval' : (testMode ? 'Start test' : 'Start campaign')}
           </button>
         ) : (
           <div className="flex gap-2">
             {lastStatus === 'paused' ? (
-              <button onClick={handleResume} className="btn-secondary text-amber-400 border-amber-500/30 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Resume Campaign
+              <button onClick={handleResume} className="btn-secondary flex items-center gap-1.5 text-amber-500 dark:text-amber-400">
+                Resume
               </button>
             ) : (
-              <button onClick={handlePause} className="btn-secondary text-amber-400 border-amber-500/30 flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Pause Campaign
+              <button onClick={handlePause} className="btn-secondary flex items-center gap-1.5 text-amber-500 dark:text-amber-400">
+                Pause
               </button>
             )}
-            <button onClick={handleStop} className="btn-danger flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
-              </svg>
-              Stop Campaign
+            <button onClick={handleStop} className="btn-danger flex items-center gap-1.5">
+              Stop
             </button>
           </div>
         )}
@@ -327,22 +291,41 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
           <button
             onClick={handleQuickTest}
             disabled={testingSingle || submitting}
-            className="btn-secondary flex items-center gap-2"
+            className="btn-secondary flex items-center gap-1.5"
           >
-            <svg className="w-5 h-5 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-            Send Quick Test
+            {testingSingle ? 'Sending...' : 'Quick test'}
           </button>
         )}
 
         {showDownload && (
-          <a href={getFailedCSVUrl()} download="Failed_Sends.csv" className="btn-secondary flex items-center gap-2 text-sm">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-            Download Failed CSV
+          <a href={getFailedCSVUrl()} download="Failed_Sends.csv" className="btn-secondary text-sm flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            Failed CSV
           </a>
         )}
       </div>
+    </div>
+  );
+}
+
+function Toggle({ label, description, enabled, onChange, disabled, color = 'brand' }) {
+  const bgColor = enabled
+    ? (color === 'amber' ? 'bg-amber-500' : 'bg-brand-600')
+    : 'bg-surface-elevated';
+
+  return (
+    <div className="flex items-center justify-between bg-surface-hover rounded-lg p-3">
+      <div>
+        <p className="text-sm font-medium text-content-primary">{label}</p>
+        <p className="text-xs text-content-muted">{description}</p>
+      </div>
+      <button
+        onClick={onChange}
+        disabled={disabled}
+        className={`relative w-11 h-6 rounded-full transition-colors ${bgColor}`}
+      >
+        <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${enabled ? 'left-[calc(100%-1.375rem)]' : 'left-0.5'}`} />
+      </button>
     </div>
   );
 }

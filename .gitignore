@@ -17,5 +17,11 @@ venv/
 .DS_Store
 Thumbs.db
 
+# Runtime data (uploads, drafts, SQLite DB)
+backend/data/
+
+# Claude Code
+.claude/
+
 # Render
 .render/

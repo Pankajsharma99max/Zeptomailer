@@ -6,11 +6,14 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 import io
 
+from config import get_settings
 from models import CampaignConfig, Recipient, User, CampaignMetadata
 from store import store
 from auth import get_current_user, require_admin
 from database import db_cursor, get_connection
 from services.campaign_runner import campaign_state, run_campaign
+from services.pdf_engine import generate_certificate_pdf
+from services.mailer import send_single_email
 
 router = APIRouter(prefix="/api/campaign", tags=["campaign"])
 
@@ -119,6 +122,66 @@ async def reject_campaign(campaign_id: str, admin: User = Depends(require_admin)
 async def run_campaign_wrapper(campaign_id, recipients, template_bytes_list, config, is_retry_failed=False):
     """Wrapper to update DB status after campaign completes."""
     await run_campaign(recipients, template_bytes_list, config, campaign_id=campaign_id, is_retry_failed=is_retry_failed)
+
+@router.get("/progress")
+async def get_campaign_progress(user: User = Depends(get_current_user)):
+    """Polling fallback for campaign progress (mirrors the /ws/progress payload)."""
+    return campaign_state.get_progress()
+
+@router.post("/test-single")
+async def test_single(config: CampaignConfig, user: User = Depends(get_current_user)):
+    """Send a single test email (with certificate if applicable) to the admin address."""
+    settings = get_settings()
+    template_bytes_list, recipients = store.get_draft_data(user.id)
+
+    if not config.email_only and not template_bytes_list:
+        raise HTTPException(status_code=400, detail="No template uploaded yet")
+
+    name = recipients[0].name if recipients else "Test User"
+
+    pdf_bytes = None
+    if not config.email_only:
+        pdf_bytes = await asyncio.to_thread(
+            generate_certificate_pdf,
+            templates_bytes=template_bytes_list,
+            name=name,
+            x_percent=config.x_percent,
+            y_percent=config.y_percent,
+            font_size=config.font_size,
+            font_color=config.font_color,
+            text_align=config.text_align,
+            font_family=config.font_family,
+            is_bold=config.is_bold,
+            text_effect=config.text_effect,
+            placeholder_pages=config.placeholder_pages,
+        )
+
+    # Use the dynamic sender name from app settings when available
+    sender_name = settings.SENDER_NAME
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM app_settings WHERE key = ?", ("sender_name",))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        sender_name = row["value"]
+
+    success, error = await send_single_email(
+        token=settings.ZEPTOMAIL_TOKEN,
+        sender_email=settings.SENDER_EMAIL,
+        sender_name=sender_name,
+        recipient_email=settings.ADMIN_EMAIL,
+        recipient_name=name,
+        subject=config.email_subject,
+        body=config.email_body,
+        pdf_bytes=pdf_bytes,
+        filename=f"{name}_Certificate.pdf",
+        is_html=config.is_html,
+    )
+
+    if not success:
+        raise HTTPException(status_code=502, detail=f"Test send failed: {error}")
+    return {"message": f"Test email sent to {settings.ADMIN_EMAIL}"}
 
 @router.post("/stop")
 async def stop_campaign(user: User = Depends(get_current_user)):

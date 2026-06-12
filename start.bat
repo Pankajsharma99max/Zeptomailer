@@ -1,17 +1,16 @@
 @echo off
-echo =========================================
-echo       Starting CERTIFY HUB Server
-echo =========================================
-echo.
-echo Starting Backend (FastAPI)...
-start cmd /k "cd backend && python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
-
-echo Starting Frontend (Vite)...
-start cmd /k "cd frontend && npm run dev"
-
-echo.
-echo Both servers have been launched in separate windows!
-echo Once Vite is ready, you can access the site at:
-echo http://localhost:5173/
-echo.
-pause
+REM CertFlow — one-click local start (production mode).
+REM Serves the built frontend and the API together on http://localhost:8000
+cd /d "%~dp0backend"
+if not exist ".venv\Scripts\python.exe" (
+    echo Python venv not found at backend\.venv — create it and install requirements.txt first.
+    pause
+    exit /b 1
+)
+if not exist "static\index.html" (
+    echo Frontend build missing — run rebuild-frontend.bat first.
+    pause
+    exit /b 1
+)
+start "" http://localhost:8000
+.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
