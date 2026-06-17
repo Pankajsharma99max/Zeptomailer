@@ -164,7 +164,7 @@ export default function OverlayEditor({ placeholders, onPlaceholdersChange, csvH
           {selectedPlaceholder && (
             <div className="bg-surface-hover p-4 rounded-lg space-y-3">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-content-primary">{{'{{'}{selectedPlaceholder.field}{'}}'}} Settings</h3>
+                <h3 className="text-sm font-semibold text-content-primary">{"{{"}{selectedPlaceholder.field}{"}}"} Settings</h3>
                 <button
                   onClick={() => setSelectedField(null)}
                   className="text-xs text-content-muted hover:text-content-primary"
@@ -309,7 +309,7 @@ export default function OverlayEditor({ placeholders, onPlaceholdersChange, csvH
                 }}
               >
                 <span className="font-semibold whitespace-nowrap select-none pointer-events-none">
-                  {{'{{'}{ph.field}{'}}'}}
+                  {"{{"}{ph.field}{"}}"}
                 </span>
               </div>
             ))}
