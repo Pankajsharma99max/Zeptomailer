@@ -40,17 +40,18 @@ async def preview_certificates(req: PreviewRequest, user: User = Depends(get_cur
     # Use the first template page for the quick preview image returned here
     template_bytes = template_bytes_list[0]
     for r in sample:
+        # Convert recipient to dict for placeholder rendering
+        recipient_data = {
+            "name": r.name,
+            "email": r.email,
+        }
         img_bytes = generate_certificate_image(
             template_bytes=template_bytes,
-            name=r.name,
-            x_percent=req.x_percent,
-            y_percent=req.y_percent,
-            font_size=req.font_size,
-            font_color=req.font_color,
-            text_align=req.text_align,
-            is_bold=req.is_bold,
-            font_family=req.font_family,
-            text_effect=req.text_effect,
+            data=recipient_data,
+            placeholders=[
+                {**p, "field": p["field"].lower()}
+                for p in req.placeholders
+            ],
         )
         previews.append(
             {

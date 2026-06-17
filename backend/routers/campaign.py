@@ -137,23 +137,22 @@ async def test_single(config: CampaignConfig, user: User = Depends(get_current_u
     if not config.email_only and not template_bytes_list:
         raise HTTPException(status_code=400, detail="No template uploaded yet")
 
-    name = recipients[0].name if recipients else "Test User"
+    recipient = recipients[0] if recipients else Recipient(name="Test User", email="test@example.com")
 
     pdf_bytes = None
-    if not config.email_only:
+    if not config.email_only and config.placeholders:
+        recipient_data = {
+            "name": recipient.name,
+            "email": recipient.email,
+        }
         pdf_bytes = await asyncio.to_thread(
             generate_certificate_pdf,
             templates_bytes=template_bytes_list,
-            name=name,
-            x_percent=config.x_percent,
-            y_percent=config.y_percent,
-            font_size=config.font_size,
-            font_color=config.font_color,
-            text_align=config.text_align,
-            font_family=config.font_family,
-            is_bold=config.is_bold,
-            text_effect=config.text_effect,
-            placeholder_pages=config.placeholder_pages,
+            data=recipient_data,
+            placeholders=[
+                p.model_dump() if hasattr(p, 'model_dump') else dict(p)
+                for p in config.placeholders
+            ],
         )
 
     # Use the dynamic sender name from app settings when available
@@ -171,11 +170,11 @@ async def test_single(config: CampaignConfig, user: User = Depends(get_current_u
         sender_email=settings.SENDER_EMAIL,
         sender_name=sender_name,
         recipient_email=settings.ADMIN_EMAIL,
-        recipient_name=name,
+        recipient_name=recipient.name,
         subject=config.email_subject,
         body=config.email_body,
         pdf_bytes=pdf_bytes,
-        filename=f"{name}_Certificate.pdf",
+        filename=f"{recipient.name}_Certificate.pdf",
         is_html=config.is_html,
     )
 

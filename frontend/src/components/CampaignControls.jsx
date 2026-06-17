@@ -38,7 +38,7 @@ const DEFAULT_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export default function CampaignControls({ coords, fontSize, fontColor, textAlign, isBold, fontFamily, textEffect, placeholderPages, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
+export default function CampaignControls({ placeholders, isRunning, onRunningChange, lastStatus, lastSentCount, userRole }) {
   const [subject, setSubject] = useState('Your Certificate');
   const [htmlMode, setHtmlMode] = useState(false);
   const [emailOnly, setEmailOnly] = useState(false);
@@ -63,27 +63,22 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
   const handleSubmit = async () => {
     setError('');
     setSuccess('');
+
+    if (placeholders.length === 0) {
+      setError('Add at least one placeholder to your template');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const pages = placeholderPages && placeholderPages.length > 0
-        ? placeholderPages
-        : [true];
       const res = await submitCampaign({
-        x_percent: coords.x_percent,
-        y_percent: coords.y_percent,
-        font_size: fontSize,
-        font_color: fontColor,
-        text_align: textAlign,
-        is_bold: isBold,
-        font_family: fontFamily,
-        text_effect: textEffect,
+        placeholders: placeholders,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,
         test_mode: testMode,
         start_index: parseInt(startIndex) || 0,
         email_only: emailOnly,
-        placeholder_pages: pages,
       });
       setSuccess(res.message);
       setTimeout(() => setSuccess(''), 5000);
@@ -97,27 +92,22 @@ export default function CampaignControls({ coords, fontSize, fontColor, textAlig
   const handleQuickTest = async () => {
     setError('');
     setSuccess('');
+
+    if (placeholders.length === 0) {
+      setError('Add at least one placeholder to test');
+      return;
+    }
+
     setTestingSingle(true);
     try {
-      const pages = placeholderPages && placeholderPages.length > 0
-        ? placeholderPages
-        : [true];
       const res = await sendQuickTest({
-        x_percent: coords.x_percent,
-        y_percent: coords.y_percent,
-        font_size: fontSize,
-        font_color: fontColor,
-        text_align: textAlign,
-        is_bold: isBold,
-        font_family: fontFamily,
-        text_effect: textEffect,
+        placeholders: placeholders,
         email_subject: subject,
         email_body: body,
         is_html: htmlMode,
         test_mode: true,
         start_index: 0,
         email_only: emailOnly,
-        placeholder_pages: pages,
       });
       setSuccess(res.message);
       setTimeout(() => setSuccess(''), 5000);

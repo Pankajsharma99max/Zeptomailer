@@ -53,31 +53,16 @@ def _hex_to_rgb(hex_color: str) -> tuple:
     return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))
 
 
-def generate_certificate_image(
-    template_bytes: bytes,
-    name: str,
-    x_percent: float,
-    y_percent: float,
-    font_size: int = 48,
-    font_color: str = "#000000",
-    text_align: str = "center",
-    is_bold: bool = False,
-    font_family: str = "Roboto",
-    text_effect: str = "none",
-) -> bytes:
-    """
-    Draw a name on the certificate template and return JPEG bytes.
-
-    Coordinates are given as percentages (0–100) of the image dimensions
-    so the frontend can send resolution-independent values.
-
-    text_align: "left" | "center" | "right"
-      - left: text starts at x
-      - center: text is centered on x
-      - right: text ends at x
-    """
-    img = Image.open(io.BytesIO(template_bytes)).convert("RGB")
-    draw = ImageDraw.Draw(img)
+def _draw_text_on_image(draw, img_width, img_height, text: str, placeholder_config: dict) -> None:
+    """Draw a single text field on an image with the given configuration."""
+    x_percent = placeholder_config.get("x_percent", 50)
+    y_percent = placeholder_config.get("y_percent", 50)
+    font_size = placeholder_config.get("font_size", 48)
+    font_color = placeholder_config.get("font_color", "#000000")
+    text_align = placeholder_config.get("text_align", "center")
+    is_bold = placeholder_config.get("is_bold", False)
+    font_family = placeholder_config.get("font_family", "Roboto")
+    text_effect = placeholder_config.get("text_effect", "none")
 
     # Load font
     font_path = get_font_file(font_family, is_bold)
@@ -88,8 +73,8 @@ def generate_certificate_image(
         font = ImageFont.load_default()
 
     # Translate percentage coords -> pixel coords
-    px_x = int((x_percent / 100) * img.width)
-    px_y = int((y_percent / 100) * img.height)
+    px_x = int((x_percent / 100) * img_width)
+    px_y = int((y_percent / 100) * img_height)
 
     # Determine anchor based on text_align
     if text_align == "left":
@@ -104,22 +89,42 @@ def generate_certificate_image(
     # Apply text effect
     if text_effect == "shadow":
         shadow_offset = max(2, font_size // 15)
-        # Draw a soft dark shadow
-        draw.text((px_x + shadow_offset, px_y + shadow_offset), name, font=font, fill=(30, 30, 30), anchor=anchor)
-        draw.text((px_x, px_y), name, font=font, fill=color, anchor=anchor)
+        draw.text((px_x + shadow_offset, px_y + shadow_offset), text, font=font, fill=(30, 30, 30), anchor=anchor)
+        draw.text((px_x, px_y), text, font=font, fill=color, anchor=anchor)
     elif text_effect == "outline-white":
         stroke_width = max(1, font_size // 25)
-        draw.text((px_x, px_y), name, font=font, fill=color, stroke_width=stroke_width, stroke_fill=(255, 255, 255), anchor=anchor)
+        draw.text((px_x, px_y), text, font=font, fill=color, stroke_width=stroke_width, stroke_fill=(255, 255, 255), anchor=anchor)
     elif text_effect == "outline-black":
         stroke_width = max(1, font_size // 25)
-        draw.text((px_x, px_y), name, font=font, fill=color, stroke_width=stroke_width, stroke_fill=(0, 0, 0), anchor=anchor)
+        draw.text((px_x, px_y), text, font=font, fill=color, stroke_width=stroke_width, stroke_fill=(0, 0, 0), anchor=anchor)
     elif text_effect == "gold-glow":
         shadow_offset = max(1, font_size // 20)
-        draw.text((px_x + shadow_offset, px_y + shadow_offset), name, font=font, fill=(212, 175, 55), anchor=anchor) # Gold color
-        draw.text((px_x, px_y), name, font=font, fill=color, anchor=anchor)
+        draw.text((px_x + shadow_offset, px_y + shadow_offset), text, font=font, fill=(212, 175, 55), anchor=anchor)
+        draw.text((px_x, px_y), text, font=font, fill=color, anchor=anchor)
     else:
-        # Normal text
-        draw.text((px_x, px_y), name, font=font, fill=color, anchor=anchor)
+        draw.text((px_x, px_y), text, font=font, fill=color, anchor=anchor)
+
+
+def generate_certificate_image(
+    template_bytes: bytes,
+    data: dict,
+    placeholders: list,
+) -> bytes:
+    """
+    Draw multiple text fields on the certificate template and return JPEG bytes.
+
+    data: dict with CSV column values (e.g., {"name": "John Doe", "email": "john@example.com"})
+    placeholders: list of placeholder configs with field, x_percent, y_percent, etc.
+    """
+    img = Image.open(io.BytesIO(template_bytes)).convert("RGB")
+    draw = ImageDraw.Draw(img)
+
+    # Draw each placeholder
+    for placeholder in placeholders:
+        field_name = placeholder.get("field", "name")
+        field_value = str(data.get(field_name, ""))
+        if field_value:
+            _draw_text_on_image(draw, img.width, img.height, field_value, placeholder)
 
     # Save to JPEG in memory
     buf = io.BytesIO()
@@ -130,42 +135,22 @@ def generate_certificate_image(
 
 def generate_certificate_pdf(
     templates_bytes: list[bytes],
-    name: str,
-    x_percent: float,
-    y_percent: float,
-    font_size: int = 48,
-    font_color: str = "#000000",
-    text_align: str = "center",
-    is_bold: bool = False,
-    font_family: str = "Roboto",
-    text_effect: str = "none",
-    placeholder_pages: list[bool] = None,
+    data: dict,
+    placeholders: list,
 ) -> bytes:
     """
     Generate a multi-page PDF certificate entirely in memory.
+
+    data: dict with CSV column values (e.g., {"name": "John Doe", "email": "john@example.com"})
+    placeholders: list of placeholder configs with field, x_percent, y_percent, font_size, etc.
     """
-    # Treat None or empty list the same: draw name on every page
-    if not placeholder_pages:
-        placeholder_pages = [True] * len(templates_bytes)
 
     pdf_buf = io.BytesIO()
     c = None
 
-    for i, t_bytes in enumerate(templates_bytes):
-        # Default to True for any page index beyond the list
-        has_placeholder = placeholder_pages[i] if i < len(placeholder_pages) else True
-        
-        if has_placeholder:
-            # Draw name on template via Pillow
-            jpeg_bytes = generate_certificate_image(
-                t_bytes, name, x_percent, y_percent, font_size, font_color, text_align, is_bold, font_family, text_effect
-            )
-        else:
-            # Use original image
-            img = Image.open(io.BytesIO(t_bytes)).convert("RGB")
-            buf = io.BytesIO()
-            img.save(buf, format="JPEG", quality=92)
-            jpeg_bytes = buf.getvalue()
+    for t_bytes in templates_bytes:
+        # Draw all placeholders on template via Pillow
+        jpeg_bytes = generate_certificate_image(t_bytes, data, placeholders)
 
         # Determine page size from image dimensions
         img = Image.open(io.BytesIO(jpeg_bytes))
@@ -179,7 +164,7 @@ def generate_certificate_pdf(
         img_reader = ImageReader(io.BytesIO(jpeg_bytes))
         c.drawImage(img_reader, 0, 0, width=img_w, height=img_h)
         c.showPage()
-        
+
     if c is not None:
         c.save()
 

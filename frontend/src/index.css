@@ -35,11 +35,16 @@
 
 @layer base {
   html {
-    transition: background-color 0.2s ease;
+    color-scheme: light dark;
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
   body {
     @apply bg-surface-page text-content-primary font-sans antialiased relative overflow-x-hidden;
     min-height: 100vh;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+  * {
+    @apply transition-colors duration-300;
   }
   h1, h2, h3 {
     @apply tracking-tight;

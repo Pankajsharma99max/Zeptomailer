@@ -3,23 +3,28 @@ from typing import Optional, Literal, List
 from datetime import datetime
 
 
-class CampaignConfig(BaseModel):
-    """Configuration for a certificate email campaign."""
-    x_percent: float          # Name X position as % of image width
-    y_percent: float          # Name Y position as % of image height
+class PlaceholderConfig(BaseModel):
+    """Configuration for a single text placeholder on a certificate."""
+    field: str                 # CSV column name (e.g., "name", "email", "date")
+    x_percent: float          # X position as % of image width
+    y_percent: float          # Y position as % of image height
     font_size: int = 48       # Font size in pixels
     font_color: str = "#000000"
     is_bold: bool = False
     font_family: str = "Roboto"
     text_effect: str = "none"
     text_align: Literal["left", "center", "right"] = "center"
+
+
+class CampaignConfig(BaseModel):
+    """Configuration for a certificate email campaign."""
+    placeholders: List[PlaceholderConfig]  # Multiple text fields on certificate
     email_subject: str = "Your Certificate"
     email_body: str = "Please find your certificate attached."
     is_html: bool = False
     test_mode: bool = False
     start_index: int = 0      # Skip this many recipients
     email_only: bool = False  # Skip PDF generation and send plain/html email
-    placeholder_pages: List[bool] = [] # Pages that should have the placeholder
 
 
 class ProgressUpdate(BaseModel):
@@ -36,14 +41,7 @@ class ProgressUpdate(BaseModel):
 
 class PreviewRequest(BaseModel):
     """Request to generate preview certificates."""
-    x_percent: float
-    y_percent: float
-    font_size: int = 48
-    font_color: str = "#000000"
-    is_bold: bool = False
-    font_family: str = "Roboto"
-    text_effect: str = "none"
-    text_align: str = "center"
+    placeholders: List[PlaceholderConfig]
     sample_count: int = 5
 
 

@@ -15,9 +15,14 @@ export default function CsvUploader({ onUploaded, restoredCount }) {
     setResult(null);
 
     try {
+      const text = await file.text();
+      const lines = text.split('\n');
+      const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
+
       const data = await uploadCSV(file);
+      const dataWithHeaders = { ...data, headers };
       setResult(data);
-      onUploaded?.(data);
+      onUploaded?.(dataWithHeaders);
     } catch (err) {
       setError(err.message);
     } finally {

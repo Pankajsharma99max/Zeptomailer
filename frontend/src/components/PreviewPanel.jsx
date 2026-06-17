@@ -1,25 +1,23 @@
 import { useState } from 'react';
 import { fetchPreviews } from '../lib/api';
 
-export default function PreviewPanel({ coords, fontSize, fontColor, textAlign, isBold, fontFamily, textEffect }) {
+export default function PreviewPanel({ placeholders }) {
   const [previews, setPreviews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   const handlePreview = async () => {
+    if (placeholders.length === 0) {
+      setError('Add at least one placeholder first');
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
       const data = await fetchPreviews({
-        x_percent: coords.x_percent,
-        y_percent: coords.y_percent,
-        font_size: fontSize,
-        font_color: fontColor,
-        text_align: textAlign,
-        is_bold: isBold,
-        font_family: fontFamily,
-        text_effect: textEffect,
+        placeholders: placeholders,
         sample_count: 5,
       });
       setPreviews(data.previews);

@@ -13,8 +13,8 @@ class Settings(BaseSettings):
     SENDER_EMAIL: str = "noreply@yourdomain.com"
     SENDER_NAME: str = "Certificate Service"
     ADMIN_EMAIL: str = "admin@yourdomain.com"
-    BATCH_SIZE: int = 50
-    BATCH_DELAY_SECONDS: float = 1.0
+    BATCH_SIZE: int = 100  # Increased from 50 for faster processing
+    BATCH_DELAY_SECONDS: float = 0.5  # Reduced from 1.0 for lower latency
     FRONTEND_ORIGIN: str = "http://localhost:5173"
     APP_PASSWORD: str = ""
 

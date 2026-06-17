@@ -130,6 +130,43 @@ def parse_csv(csv_bytes: bytes) -> List[Recipient]:
     return recipients
 
 
+async def _generate_pdfs_batch(templates_bytes: List[bytes], batch: List[Recipient], config: CampaignConfig) -> Dict[str, bytes]:
+    """
+    Generate PDFs for a batch of recipients in parallel.
+    Returns dict mapping email -> pdf_bytes
+    """
+    loop = asyncio.get_event_loop()
+    tasks = []
+
+    for r in batch:
+        recipient_data = {"name": r.name, "email": r.email}
+        placeholders = [
+            p.model_dump() if hasattr(p, 'model_dump') else dict(p)
+            for p in config.placeholders
+        ]
+        # Run PDF generation in thread pool for parallelization
+        task = loop.run_in_executor(
+            None,
+            generate_certificate_pdf,
+            templates_bytes,
+            recipient_data,
+            placeholders,
+        )
+        tasks.append((r.email, task))
+
+    # Await all PDF generations concurrently
+    results = {}
+    for email, task in tasks:
+        try:
+            pdf_bytes = await task
+            results[email] = pdf_bytes
+        except Exception as e:
+            logger.error("PDF generation failed for %s: %s", email, e)
+            results[email] = None
+
+    return results
+
+
 async def run_campaign(
     recipients: List[Recipient],
     templates_bytes: List[bytes],
@@ -138,7 +175,7 @@ async def run_campaign(
     is_retry_failed: bool = False,
 ):
     """
-    Execute the full certificate email campaign.
+    Execute the full certificate email campaign with optimized parallel processing.
     """
     settings = get_settings()
     state = campaign_state
@@ -205,31 +242,24 @@ async def run_campaign(
             end = min(start + batch_size, len(current_recipients))
             batch = current_recipients[start:end]
 
-            batch_data = []
-            for r in batch:
-                if state.should_stop:
-                    break
-                state.current_name = r.name
-                if config.email_only:
-                    pdf_bytes = None
-                else:
-                    pdf_bytes = await asyncio.to_thread(
-                        generate_certificate_pdf,
-                        templates_bytes=templates_bytes,
-                        name=r.name,
-                        x_percent=config.x_percent,
-                        y_percent=config.y_percent,
-                        font_size=config.font_size,
-                        font_color=config.font_color,
-                        text_align=config.text_align,
-                        font_family=config.font_family,
-                        is_bold=config.is_bold,
-                        text_effect=config.text_effect,
-                        placeholder_pages=config.placeholder_pages,
-                    )
-                batch_data.append(
-                    {"name": r.name, "email": r.email, "pdf_bytes": pdf_bytes}
-                )
+            # Generate all PDFs in parallel for this batch
+            if config.email_only or not config.placeholders:
+                # Newsletter mode: no PDF generation needed
+                batch_data = [
+                    {"name": r.name, "email": r.email, "pdf_bytes": None}
+                    for r in batch
+                ]
+            else:
+                # Certificate mode: parallel PDF generation
+                pdf_map = await _generate_pdfs_batch(templates_bytes, batch, config)
+                batch_data = [
+                    {"name": r.name, "email": r.email, "pdf_bytes": pdf_map.get(r.email)}
+                    for r in batch
+                ]
+
+            # Update current name from first recipient in batch
+            if batch:
+                state.current_name = batch[0].name
 
             if state.should_stop:
                 state.status = "stopped"
@@ -261,10 +291,11 @@ async def run_campaign(
                         }
                     )
 
-            logger.info("Batch %d/%d complete: %d sent, %d failed", state.current_batch, state.total_batches, batch_sent, batch_failed)
-            
-            # Sync progress to DB if campaign_id is provided
-            if campaign_id:
+            logger.info("Batch %d/%d complete: %d sent, %d failed | Total: %d sent, %d failed",
+                       state.current_batch, state.total_batches, batch_sent, batch_failed, state.sent, state.failed)
+
+            # Sync progress to DB in batches (every 2 batches or at end) for performance
+            if campaign_id and (batch_idx % 2 == 0 or batch_idx == state.total_batches - 1):
                 try:
                     with db_cursor() as cursor:
                         cursor.execute(

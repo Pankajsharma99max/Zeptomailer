@@ -112,25 +112,35 @@ async def send_batch(
     is_newsletter: bool = False,
 ):
     """
-    Send a batch of emails concurrently. Each recipient dict must contain:
+    Send a batch of emails with optimized concurrency. Each recipient dict must contain:
       - name: str
       - email: str
-      - pdf_bytes: bytes
+      - pdf_bytes: bytes (can be None for newsletter mode)
 
     Yields {email, name, success, error} dicts as they complete in real-time.
     """
-    # Optimize connection pooling with a single persistent HTTP client for the batch.
-    concurrency = 50 if is_newsletter else 15
+    # Highly optimized connection pooling for maximum throughput
+    # Newsletter mode: 100+ concurrent (no attachments = lightweight)
+    # Certificate mode: 30+ concurrent (with large PDF attachments)
+    concurrency = 100 if is_newsletter else 30
     sem = asyncio.Semaphore(concurrency)
-    limits = httpx.Limits(max_connections=concurrency, max_keepalive_connections=concurrency)
-    timeout = httpx.Timeout(45.0)
+
+    # Increased connection limits and optimized timeout
+    limits = httpx.Limits(
+        max_connections=concurrency,
+        max_keepalive_connections=concurrency,
+        keepalive_expiry=60.0
+    )
+    timeout = httpx.Timeout(60.0, connect=15.0, read=30.0, write=15.0)
 
     async with httpx.AsyncClient(limits=limits, timeout=timeout) as client:
         async def _send_task(r: Dict[str, Any]) -> Dict[str, Any]:
             async with sem:
-                # Add a smaller delay for newsletters (no attachments), larger for heavy PDFs
-                delay = 0.05 if is_newsletter else 0.2
-                await asyncio.sleep(delay)
+                # Minimal delay: only for newsletters (no PDF overhead)
+                if is_newsletter:
+                    await asyncio.sleep(0.01)  # 10ms delay for rate limiting
+                # Certificates skip delay - PDFs already generated (no API burden)
+
                 success, error = await send_single_email(
                     client=client,
                     token=token,

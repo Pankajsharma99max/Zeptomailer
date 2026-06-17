@@ -13,19 +13,13 @@ import Settings from './components/Settings';
 import { useTheme } from './lib/theme';
 
 export default function App() {
-  const [coords, setCoords] = useState({ x_percent: 50, y_percent: 50 });
-  const [fontSize, setFontSize] = useState(48);
-  const [fontColor, setFontColor] = useState('#000000');
-  const [textAlign, setTextAlign] = useState('center');
-  const [isBold, setIsBold] = useState(false);
-  const [fontFamily, setFontFamily] = useState('Roboto');
-  const [textEffect, setTextEffect] = useState('none');
+  const [placeholders, setPlaceholders] = useState([]);
+  const [csvHeaders, setCsvHeaders] = useState([]);
   const [csvUploaded, setCsvUploaded] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [lastStatus, setLastStatus] = useState(null);
   const [restoredTemplateUrl, setRestoredTemplateUrl] = useState(null);
   const [restoredTemplateInfo, setRestoredTemplateInfo] = useState(null);
-  const [placeholderPages, setPlaceholderPages] = useState([]);
   const [recipientCount, setRecipientCount] = useState(0);
   const [lastSentCount, setLastSentCount] = useState(0);
 
@@ -146,60 +140,38 @@ export default function App() {
             <div className="flex items-center gap-1.5 text-sm">
               <Step number={1} label="Template" done={true} />
               <StepConnector />
-              <Step number={2} label="Recipients" done={csvUploaded} />
+              <Step number={2} label="Placeholders" done={placeholders.length > 0} />
               <StepConnector />
-              <Step number={3} label="Preview" done={csvUploaded} />
+              <Step number={3} label="Recipients" done={csvUploaded} />
               <StepConnector />
-              <Step number={4} label={user.role === 'admin' ? 'Send' : 'Submit'} done={csvUploaded} />
+              <Step number={4} label="Preview" done={csvUploaded && placeholders.length > 0} />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-6">
                 <OverlayEditor
-                  coords={coords}
-                  onCoordsChange={setCoords}
-                  fontSize={fontSize}
-                  onFontSizeChange={setFontSize}
-                  fontColor={fontColor}
-                  onFontColorChange={setFontColor}
-                  textAlign={textAlign}
-                  onTextAlignChange={setTextAlign}
-                  isBold={isBold}
-                  onIsBoldChange={setIsBold}
-                  fontFamily={fontFamily}
-                  onFontFamilyChange={setFontFamily}
-                  textEffect={textEffect}
-                  onTextEffectChange={setTextEffect}
+                  placeholders={placeholders}
+                  onPlaceholdersChange={setPlaceholders}
+                  csvHeaders={csvHeaders}
                   restoredTemplateUrl={restoredTemplateUrl}
                   restoredTemplateInfo={restoredTemplateInfo}
-                  placeholderPages={placeholderPages}
-                  onPlaceholderPagesChange={setPlaceholderPages}
                 />
                 <CsvUploader
-                  onUploaded={() => { setCsvUploaded(true); setRecipientCount(prev => prev || 1); }}
+                  onUploaded={(data) => {
+                    setCsvUploaded(true);
+                    setRecipientCount(prev => prev || 1);
+                    if (data.headers) setCsvHeaders(data.headers);
+                  }}
                   restoredCount={recipientCount}
                 />
               </div>
 
               <div className="space-y-6">
                 <PreviewPanel
-                  coords={coords}
-                  fontSize={fontSize}
-                  fontColor={fontColor}
-                  textAlign={textAlign}
-                  isBold={isBold}
-                  fontFamily={fontFamily}
-                  textEffect={textEffect}
+                  placeholders={placeholders}
                 />
                 <CampaignControls
-                  coords={coords}
-                  fontSize={fontSize}
-                  fontColor={fontColor}
-                  textAlign={textAlign}
-                  isBold={isBold}
-                  fontFamily={fontFamily}
-                  textEffect={textEffect}
-                  placeholderPages={placeholderPages}
+                  placeholders={placeholders}
                   isRunning={isRunning}
                   onRunningChange={setIsRunning}
                   lastStatus={lastStatus}
